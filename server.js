@@ -363,7 +363,250 @@ app.put('/api/user/status', authenticate, (req, res) => {
     
     res.json({ success: true });
 });
+// === ADMIN ROUTES (dodaj przed app.listen) ===
 
+const requireAdmin = async (req, res, next) => {
+    // Sprawdź czy user jest adminem
+    db.get('SELECT is_admin FROM users WHERE id = ?', [req.userId], (err, user) => {
+        if (err || !user || !user.is_admin) {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        next();
+    });
+};
+
+// Admin middleware - użyj: app.get('/admin/...', authenticate, requireAdmin, handler)
+
+// Stats
+app.get('/api/admin/users/count', authenticate, requireAdmin, (req, res) => {
+    db.get('SELECT COUNT(*) as count FROM users WHERE is_active = 1', (err, row) => {
+        res.json({ count: row?.count || 0 });
+    });
+});
+
+app.get('/api/admin/games/count', authenticate, requireAdmin, (req, res) => {
+    db.get('SELECT COUNT(*) as count FROM games', (err, row) => {
+        res.json({ count: row?.count || 0 });
+    });
+});
+
+app.get('/api/admin/sessions/today', authenticate, requireAdmin, (req, res) => {
+    const today = new Date().toISOString().split('T')[0];
+    db.get(`
+        SELECT COUNT(*) as count, SUM(duration_seconds) as total_seconds 
+        FROM sessions WHERE date(start_time) = ?
+    `, [today], (err, row) => {
+        res.json({ 
+            count: row?.count || 0, 
+            total_seconds: row?.total_seconds || 0 
+        });
+    });
+});
+
+app.get('/api/admin/activity/recent', authenticate, requireAdmin, (req, res) => {
+    // Mock - w produkcji: tabela logs
+    res.json([
+        { time: new Date().toISOString(), username: 'TestUser', action: 'login', type: 'info', details: 'Web login' },
+        { time: new Date(Date.now() - 3600000).toISOString(), username: 'Player1', action: 'game_start', type: 'success', details: 'Cyber RPG 2077' },
+        { time: new Date(Date.now() - 7200000).toISOString(), username: 'Player2', action: 'purchase', type: 'success', details: 'Space Miner' }
+    ]);
+});
+
+// Users management
+app.get('/api/admin/users', authenticate, requireAdmin, (req, res) => {
+    db.all(`
+        SELECT u.*, 
+               (SELECT SUM(play_time_seconds) FROM library WHERE user_id = u.id) as total_playtime
+        FROM users u
+        ORDER BY u.created_at DESC
+    `, [], (err, users) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ users: users || [] });
+    });
+});
+
+app.post('/api/admin/users', authenticate, requireAdmin, async (req, res) => {
+    const { username, email, password, is_admin, parental_enabled } = req.body;
+    const hash = await bcrypt.hash(password, 10);
+    
+    db.run(`
+        INSERT INTO users (username, email, password_hash, is_admin, parental_enabled) 
+        VALUES (?, ?, ?, ?, ?)
+    `, [username, email, hash, is_admin ? 1 : 0, parental_enabled ? 1 : 0], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
+app.delete('/api/admin/users/:id', authenticate, requireAdmin, (req, res) => {
+    // Soft delete
+    db.run('UPDATE users SET is_active = 0 WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Games management
+app.post('/api/admin/games', authenticate, requireAdmin, (req, res) => {
+    const { id, name, developer, description, category, price, pegi, size, 
+            rating, download_url, requirements } = req.body;
+    
+    db.run(`
+        INSERT INTO games (id, name, developer, description, category, price, 
+                          pegi, size, rating, download_url, requirements)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, name, developer, description, category, price, pegi, size, 
+        rating, download_url, JSON.stringify(requirements)], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id });
+    });
+});
+
+app.put('/api/admin/games/:id', authenticate, requireAdmin, (req, res) => {
+    const { name, developer, description, category, price, pegi, size,
+            rating, download_url, requirements } = req.body;
+    
+    db.run(`
+        UPDATE games SET 
+            name = ?, developer = ?, description = ?, category = ?,
+            price = ?, pegi = ?, size = ?, rating = ?, download_url = ?,
+            requirements = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    `, [name, developer, description, category, price, pegi, size,
+        rating, download_url, JSON.stringify(requirements), req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+app.delete('/api/admin/games/:id', authenticate, requireAdmin, (req, res) => {
+    db.run('DELETE FROM games WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Library management
+app.get('/api/admin/library', authenticate, requireAdmin, (req, res) => {
+    db.all(`
+        SELECT l.*, u.username, g.name as game_name
+        FROM library l
+        JOIN users u ON l.user_id = u.id
+        JOIN games g ON l.game_id = g.id
+        ORDER BY l.added_at DESC
+        LIMIT 100
+    `, [], (err, items) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ items: items || [] });
+    });
+});
+
+app.delete('/api/admin/library/:id', authenticate, requireAdmin, (req, res) => {
+    db.run('DELETE FROM library WHERE id = ?', [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Sessions
+app.get('/api/admin/sessions', authenticate, requireAdmin, (req, res) => {
+    const { date, limit = 100 } = req.query;
+    
+    let query = `
+        SELECT s.*, u.username, g.name as game_name
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        JOIN games g ON s.game_id = g.id
+    `;
+    const params = [];
+    
+    if (date) {
+        query += ' WHERE date(s.start_time) = ?';
+        params.push(date);
+    }
+    
+    query += ' ORDER BY s.start_time DESC LIMIT ?';
+    params.push(parseInt(limit));
+    
+    db.all(query, params, (err, sessions) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ sessions: sessions || [] });
+    });
+});
+
+// Parental logs
+app.get('/api/admin/parental/logs', authenticate, requireAdmin, (req, res) => {
+    db.all(`
+        SELECT p.*, u.username, g.name as game_name
+        FROM parental_logs p
+        JOIN users u ON p.user_id = u.id
+        LEFT JOIN games g ON p.game_id = g.id
+        ORDER BY p.created_at DESC
+        LIMIT 100
+    `, [], (err, logs) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ logs: logs || [] });
+    });
+});
+
+app.delete('/api/admin/parental/logs/old', authenticate, requireAdmin, (req, res) => {
+    db.run(`
+        DELETE FROM parental_logs 
+        WHERE created_at < date('now', '-30 days')
+    `, [], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ deleted: this.changes });
+    });
+});
+
+// Detailed stats
+app.get('/api/admin/stats/detailed', authenticate, requireAdmin, (req, res) => {
+    db.get(`
+        SELECT g.name, COUNT(*) as owners, SUM(s.duration_seconds)/3600.0 as total_hours,
+               AVG(s.avg_fps) as avg_fps, MAX(s.max_cpu_temp) as max_temp
+        FROM sessions s
+        JOIN games g ON s.game_id = g.id
+        GROUP BY g.id
+        ORDER BY total_hours DESC
+        LIMIT 1
+    `, [], (err, topGame) => {
+        
+        db.get(`
+            SELECT AVG(duration_seconds)/60.0 as avg_minutes
+            FROM sessions WHERE date(start_time) >= date('now', '-7 days')
+        `, [], (err, avgSession) => {
+            
+            db.get(`
+                SELECT COUNT(DISTINCT user_id) as active_today
+                FROM sessions WHERE date(start_time) = date('now')
+            `, [], (err, active) => {
+                
+                db.all(`
+                    SELECT g.name, COUNT(*) as owners, SUM(s.duration_seconds)/3600.0 as total_hours,
+                           AVG(s.avg_fps) as avg_fps, MAX(s.max_cpu_temp) as max_temp
+                    FROM sessions s
+                    JOIN games g ON s.game_id = g.id
+                    GROUP BY g.id
+                    ORDER by total_hours DESC
+                `, [], (err, perGame) => {
+                    
+                    res.json({
+                        top_game: topGame?.name || '-',
+                        avg_session_minutes: avgSession?.avg_minutes || 0,
+                        active_today: active?.active_today || 0,
+                        per_game: perGame || []
+                    });
+                });
+            });
+        });
+    });
+});
+
+// Settings
+app.post('/api/admin/settings', authenticate, requireAdmin, (req, res) => {
+    // Zapisz do pliku config lub bazy
+    res.json({ success: true });
+});
 // === GAMES ROUTES ===
 app.get('/api/games', (req, res) => {
     const { category, search, limit = 50, offset = 0 } = req.query;
