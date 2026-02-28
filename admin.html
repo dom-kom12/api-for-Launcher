@@ -495,7 +495,17 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const API_URL = 'http://localhost:3000/api';
+        // ZMIENIONE: URL API na Render
+        const API_URL = 'https://api-for-launcher.onrender.com/api';
+        
+        // Nagłówki CORS dla wszystkich zapytań
+        const fetchOptions = {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        };
+
         let games = {};
         let editingId = null;
 
@@ -503,12 +513,26 @@
 
         async function loadGames() {
             try {
-                const response = await fetch(`${API_URL}/games`);
+                const response = await fetch(`${API_URL}/games`, {
+                    method: 'GET',
+                    ...fetchOptions
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 games = await response.json();
                 renderGames();
             } catch (error) {
-                showToast('Błąd ładowania gier!', 'error');
-                console.error(error);
+                showToast('Błąd ładowania gier: ' + error.message, 'error');
+                console.error('Błąd CORS lub połączenia:', error);
+                document.getElementById('gamesGrid').innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <h3>⚠️ Błąd połączenia</h3>
+                        <p>Nie można połączyć się z API. Sprawdź czy serwer działa i obsługuje CORS.</p>
+                    </div>
+                `;
             }
         }
 
@@ -516,15 +540,20 @@
             try {
                 const response = await fetch(`${API_URL}/games`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    ...fetchOptions,
                     body: JSON.stringify(games)
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const result = await response.json();
                 if (result.success) {
                     showToast('Zapisano zmiany w games.json!', 'success');
                 }
             } catch (error) {
-                showToast('Błąd zapisywania!', 'error');
+                showToast('Błąd zapisywania: ' + error.message, 'error');
                 console.error(error);
             }
         }
@@ -532,15 +561,21 @@
         async function deleteGameFromServer(id) {
             try {
                 const response = await fetch(`${API_URL}/games/${id}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    ...fetchOptions
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const result = await response.json();
                 if (result.success) {
                     showToast('Usunięto grę!', 'success');
                     await loadGames();
                 }
             } catch (error) {
-                showToast('Błąd usuwania!', 'error');
+                showToast('Błąd usuwania: ' + error.message, 'error');
                 console.error(error);
             }
         }
