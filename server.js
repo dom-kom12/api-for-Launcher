@@ -39,9 +39,13 @@ let notificationChannel = null;
 const userChannelsCache = new Map();
 let gamesCache = {};
 
-// === START SERWERA HTTP ===
+// 🔧 GLOBALNY FETCH dla Node.js (wymagany dla loadGlobalFile)
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+
+// === START SERWERA HTTP - NATYCHMIAST ===
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
+    console.log(`📡 Admin panel: http://localhost:${PORT}/admin`);
 });
 
 // === ENDPOINT /admin - SERWUJE PLIK admin.html ===
@@ -57,19 +61,19 @@ app.get('/admin', async (req, res) => {
             <!DOCTYPE html>
             <html>
             <head><title>Błąd</title></head>
-            <body style="font-family: Arial; padding: 50px; text-align: center;">
+            <body style="font-family: Arial; padding: 50px; text-align: center; background: #0a0a0f; color: #fff;">
                 <h1>❌ Błąd 500</h1>
                 <p>Nie można wczytać pliku admin.html</p>
                 <p>Upewnij się, że plik istnieje w katalogu aplikacji</p>
                 <hr>
-                <small>${error.message}</small>
+                <small style="color: #666;">${error.message}</small>
             </body>
             </html>
         `);
     }
 });
 
-// Health check
+// Health check - zawsze działa
 app.get('/health', (req, res) => {
     res.json({
         status: discordReady ? 'OK' : 'INITIALIZING',
@@ -87,18 +91,19 @@ app.get('/', (req, res) => {
     });
 });
 
-// Middleware sprawdzający Discord
-function requireDiscord(req, res, next) {
+// 🔧 MIDDLEWARE - opcjonalne sprawdzanie Discorda (tylko dla zapisu)
+function requireDiscordForWrite(req, res, next) {
     if (!discordReady) {
         return res.status(503).json({ 
-            error: 'Discord not ready', 
-            retryAfter: 5 
+            error: 'Discord not ready - try again in a few seconds', 
+            retryAfter: 5,
+            status: 'initializing'
         });
     }
     next();
 }
 
-// === INICJALIZACJA DISCORDA ===
+// === INICJALIZACJA DISCORDA (asynchronicznie) ===
 async function initDiscord() {
     try {
         console.log('🔌 Łączenie z Discordem...');
@@ -115,12 +120,13 @@ async function initDiscord() {
                 await syncGamesFromDiscord();
                 
                 discordReady = true;
-                console.log('✅ Discord gotowy!');
+                console.log('✅ Discord gotowy! Wszystkie funkcje aktywne.');
                 
+                // Auto-sync co 5 minut
                 setInterval(syncGamesFromDiscord, 300000);
                 
             } catch (error) {
-                console.error('❌ Błąd init:', error);
+                console.error('❌ Błąd inicjalizacji Discord:', error);
             }
         });
         
@@ -131,6 +137,7 @@ async function initDiscord() {
     }
 }
 
+// Uruchom Discord w tle (nie blokuj serwera HTTP)
 initDiscord();
 
 // === FUNKCJE POMOCNICZE ===
@@ -243,15 +250,6 @@ async function loadUserFile(username, filename, defaultData = {}) {
     }
 }
 
-async function saveChatFile(user1, user2, data) {
-    await saveUserFile(user1, `chat_${user1}_do_${user2}.json`, data, `💬 z ${user2}`);
-}
-
-async function loadChatFile(user1, user2) {
-    return await loadUserFile(user1, `chat_${user1}_do_${user2}.json`, null) 
-        || await loadUserFile(user2, `chat_${user2}_do_${user1}.json`, null);
-}
-
 // === GLOBAL FILES ===
 async function getGlobalChannel() {
     let ch = storageCategory.children.cache.find(c => c.name === 'global-data');
@@ -303,22 +301,37 @@ async function loadGlobalFile(filename, defaultData = {}) {
 async function syncGamesFromDiscord() {
     if (!discordReady) return;
     try {
-        gamesCache = await loadGlobalFile('games.json', {});
-        console.log(`🎮 ${Object.keys(gamesCache).length} gier`);
+        const loaded = await loadGlobalFile('games.json', {});
+        // Konwertuj obiekt na tablicę jeśli trzeba
+        gamesCache = Array.isArray(loaded) ? loaded : Object.values(loaded);
+        console.log(`🎮 Załadowano ${gamesCache.length} gier`);
     } catch (error) {
         console.error('❌ Sync gier:', error);
+        gamesCache = [];
     }
 }
 
 async function saveGame(gameId, gameData) {
-    gamesCache[gameId] = { ...gameData, id: gameId, updatedAt: new Date().toISOString() };
+    // Znajdź i zaktualizuj lub dodaj nową
+    const existingIndex = gamesCache.findIndex(g => g.id === gameId);
+    const gameWithId = { ...gameData, id: gameId, updatedAt: new Date().toISOString() };
+    
+    if (existingIndex >= 0) {
+        gamesCache[existingIndex] = gameWithId;
+    } else {
+        gamesCache.push(gameWithId);
+    }
+    
+    // Zapisz do Discorda jako tablica
     await saveGlobalFile('games.json', gamesCache, '🎮 Biblioteka gier');
-    return gamesCache[gameId];
+    return gameWithId;
 }
 
 async function deleteGame(gameId) {
-    if (gamesCache[gameId]) {
-        delete gamesCache[gameId];
+    const initialLength = gamesCache.length;
+    gamesCache = gamesCache.filter(g => g.id !== gameId);
+    
+    if (gamesCache.length < initialLength) {
         await saveGlobalFile('games.json', gamesCache, '🎮 Biblioteka gier');
         return true;
     }
@@ -326,19 +339,29 @@ async function deleteGame(gameId) {
 }
 
 // === ENDPOINTY GIER ===
-app.get('/games', requireDiscord, async (req, res) => {
-    res.json(Object.values(gamesCache));
+
+// 🔧 GET /games - NIE wymaga Discorda (zwraca cache lub pustą tablicę)
+app.get('/games', async (req, res) => {
+    // Jeśli Discord gotowy, zsynchronizuj najpierw
+    if (discordReady && gamesCache.length === 0) {
+        await syncGamesFromDiscord();
+    }
+    
+    // Zwróć to co mamy (nawet pustą tablicę)
+    res.json(gamesCache || []);
 });
 
-app.get('/games/:id', requireDiscord, async (req, res) => {
-    const game = gamesCache[req.params.id];
+// 🔧 GET /games/:id - NIE wymaga Discorda
+app.get('/games/:id', async (req, res) => {
+    const game = gamesCache.find(g => g.id === req.params.id);
     if (!game) return res.status(404).json({ error: 'Nie ma takiej gry' });
     res.json(game);
 });
 
-app.post('/api/games', requireDiscord, async (req, res) => {
+// POST /api/games - wymaga Discorda (zapis)
+app.post('/api/games', requireDiscordForWrite, async (req, res) => {
     try {
-        const { name, description, developer, price, icon, color, pegi } = req.body;
+        const { name, description, developer, price, icon, color, pegi, download_url } = req.body;
         if (!name) return res.status(400).json({ error: 'Nazwa wymagana' });
         
         const gameId = crypto.randomUUID();
@@ -350,6 +373,7 @@ app.post('/api/games', requireDiscord, async (req, res) => {
             icon: icon || '🎮',
             color: color || '#00d4ff',
             pegi: pegi || 12,
+            download_url: download_url || null,
             createdAt: new Date().toISOString()
         };
         
@@ -373,21 +397,33 @@ app.post('/api/games', requireDiscord, async (req, res) => {
     }
 });
 
-app.put('/api/games/:id', requireDiscord, async (req, res) => {
-    if (!gamesCache[req.params.id]) {
-        return res.status(404).json({ error: 'Gra nie istnieje' });
+// PUT /api/games/:id - wymaga Discorda (zapis)
+app.put('/api/games/:id', requireDiscordForWrite, async (req, res) => {
+    try {
+        const existing = gamesCache.find(g => g.id === req.params.id);
+        if (!existing) {
+            return res.status(404).json({ error: 'Gra nie istnieje' });
+        }
+        
+        const updated = await saveGame(req.params.id, { ...existing, ...req.body });
+        res.json({ success: true, game: updated });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
-    const updated = await saveGame(req.params.id, { ...gamesCache[req.params.id], ...req.body });
-    res.json({ success: true, game: updated });
 });
 
-app.delete('/api/games/:id', requireDiscord, async (req, res) => {
-    const success = await deleteGame(req.params.id);
-    res.json({ success, message: success ? 'Usunięto' : 'Nie znaleziono' });
+// DELETE /api/games/:id - wymaga Discorda (zapis)
+app.delete('/api/games/:id', requireDiscordForWrite, async (req, res) => {
+    try {
+        const success = await deleteGame(req.params.id);
+        res.json({ success, message: success ? 'Usunięto' : 'Nie znaleziono' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // === AUTH ===
-app.post('/api/auth/register', requireDiscord, async (req, res) => {
+app.post('/api/auth/register', requireDiscordForWrite, async (req, res) => {
     try {
         const { username, password, email } = req.body;
         if (!username || !password) {
@@ -426,7 +462,7 @@ app.post('/api/auth/register', requireDiscord, async (req, res) => {
     }
 });
 
-app.post('/api/auth/login', requireDiscord, async (req, res) => {
+app.post('/api/auth/login', requireDiscordForWrite, async (req, res) => {
     try {
         const { username, password } = req.body;
         const users = await loadGlobalFile('users.json', {});
@@ -451,7 +487,7 @@ app.post('/api/auth/login', requireDiscord, async (req, res) => {
     }
 });
 
-app.get('/api/auth/verify', requireDiscord, async (req, res) => {
+app.get('/api/auth/verify', requireDiscordForWrite, async (req, res) => {
     const auth = req.headers.authorization;
     if (!auth?.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Brak tokena' });
@@ -467,7 +503,7 @@ app.get('/api/auth/verify', requireDiscord, async (req, res) => {
 });
 
 // === ZNAJOMI ===
-app.get('/api/friends/:username', requireDiscord, async (req, res) => {
+app.get('/api/friends/:username', requireDiscordForWrite, async (req, res) => {
     const data = await loadUserFile(req.params.username, 'friends.json', { friends: [], pending: [] });
     const users = await loadGlobalFile('users.json', {});
     
@@ -482,7 +518,7 @@ app.get('/api/friends/:username', requireDiscord, async (req, res) => {
     res.json({ friends, pending: data.pending || [] });
 });
 
-app.post('/api/friends/add', requireDiscord, async (req, res) => {
+app.post('/api/friends/add', requireDiscordForWrite, async (req, res) => {
     const { fromUser, toUser } = req.body;
     const users = await loadGlobalFile('users.json', {});
     
@@ -499,7 +535,7 @@ app.post('/api/friends/add', requireDiscord, async (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/friends/respond', requireDiscord, async (req, res) => {
+app.post('/api/friends/respond', requireDiscordForWrite, async (req, res) => {
     const { username, fromUser, accept } = req.body;
     
     const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
@@ -523,12 +559,12 @@ app.post('/api/friends/respond', requireDiscord, async (req, res) => {
 });
 
 // === CZAT ===
-app.get('/api/chat/:user1/:user2', requireDiscord, async (req, res) => {
+app.get('/api/chat/:user1/:user2', requireDiscordForWrite, async (req, res) => {
     const data = await loadChatFile(req.params.user1, req.params.user2);
     res.json(data || { messages: [], participants: [req.params.user1, req.params.user2] });
 });
 
-app.post('/api/chat/send', requireDiscord, async (req, res) => {
+app.post('/api/chat/send', requireDiscordForWrite, async (req, res) => {
     const { fromUser, toUser, content } = req.body;
     
     let chat = await loadChatFile(fromUser, toUser);
@@ -551,18 +587,20 @@ app.post('/api/chat/send', requireDiscord, async (req, res) => {
 });
 
 // === BIBLIOTEKA ===
-app.get('/api/users/:username/library', requireDiscord, async (req, res) => {
+app.get('/api/users/:username/library', requireDiscordForWrite, async (req, res) => {
     const lib = await loadUserFile(req.params.username, 'library.json', { games: [] });
     const enriched = lib.games.map(g => ({
         ...g,
-        gameDetails: gamesCache[g.gameId]
+        gameDetails: gamesCache.find(gc => gc.id === g.gameId)
     }));
     res.json(enriched);
 });
 
-app.post('/api/users/:username/library', requireDiscord, async (req, res) => {
+app.post('/api/users/:username/library', requireDiscordForWrite, async (req, res) => {
     const { gameId } = req.body;
-    if (!gamesCache[gameId]) return res.status(404).json({ error: 'Gra nie istnieje' });
+    if (!gamesCache.find(g => g.id === gameId)) {
+        return res.status(404).json({ error: 'Gra nie istnieje' });
+    }
     
     const lib = await loadUserFile(req.params.username, 'library.json', { games: [] });
     if (!lib.games.find(g => g.gameId === gameId)) {
