@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // Konfiguracja Discord Bota
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -881,4 +881,5 @@ startServer().catch(err => {
     console.error('❌ Błąd startu:', err);
     process.exit(1);
 });
+
 
