@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Konfiguracja Discord Bota
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN || 'MTQ3NzU3NDgyNTU1MDgxMTI0OA.GU-dWC.U3a5QUfQjRCjnQwrhB0yyrbY3EKHd90Alm0GyY';
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID || '1477574526933012541';
 const STORAGE_CATEGORY_ID = process.env.STORAGE_CATEGORY_ID || '1477579473611128843';
 const NOTIFICATION_CHANNEL_ID = process.env.NOTIFICATION_CHANNEL_ID || '1477577363285082123';
@@ -881,3 +881,4 @@ startServer().catch(err => {
     console.error('❌ Błąd startu:', err);
     process.exit(1);
 });
+
