@@ -359,12 +359,6 @@
     <div class="container">
         <div class="toolbar">
             <input type="text" class="search-box" id="searchInput" placeholder="🔍 Szukaj gry..." onkeyup="filterGames()">
-            <select class="search-box" style="flex: 0 0 200px;" id="categoryFilter" onchange="filterGames()">
-                <option value="">Wszystkie kategorie</option>
-                <option value="Gry">Gry</option>
-                <option value="Launcher">Launchery</option>
-                <option value="Narzędzia">Narzędzia</option>
-            </select>
         </div>
         
         <div class="games-grid" id="gamesGrid">
@@ -388,38 +382,12 @@
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label>ID (unikalne, bez spacji)</label>
-                            <input type="text" id="inputId" placeholder="np. minecraft" required>
-                        </div>
-                        <div class="form-group">
                             <label>Nazwa gry</label>
                             <input type="text" id="inputName" placeholder="Minecraft Launcher" required>
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
                         <div class="form-group">
                             <label>Developer</label>
                             <input type="text" id="inputDev" placeholder="Mojang">
-                        </div>
-                        <div class="form-group">
-                            <label>Gatunek</label>
-                            <input type="text" id="inputGenre" placeholder="Sandbox">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Kategoria</label>
-                            <select id="inputCategory">
-                                <option value="Gry">Gry</option>
-                                <option value="Launcher">Launcher</option>
-                                <option value="Narzędzia">Narzędzia</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Podkategoria</label>
-                            <input type="text" id="inputSubcategory" placeholder="RPG, Shooter, itp.">
                         </div>
                     </div>
                     
@@ -427,17 +395,6 @@
                         <div class="form-group">
                             <label>Cena (zł)</label>
                             <input type="number" id="inputPrice" step="0.01" value="0" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Rozmiar (GB)</label>
-                            <input type="number" id="inputSize" step="0.1" value="1" min="0.1">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Ocena (0-5)</label>
-                            <input type="number" id="inputRating" step="0.1" min="0" max="5" value="4.0">
                         </div>
                         <div class="form-group">
                             <label>PEGI</label>
@@ -463,20 +420,8 @@
                     </div>
                     
                     <div class="form-group">
-                        <label>URL Pobierania (puste = wymaga platformy)</label>
+                        <label>URL Pobierania</label>
                         <input type="url" id="inputUrl" placeholder="https://...">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="checkbox-group">
-                            <input type="checkbox" id="inputRealDownload" checked onchange="toggleRequires()">
-                            <span>Prawdziwe pobieranie</span>
-                        </label>
-                    </div>
-                    
-                    <div class="form-group" id="requiresGroup" style="display: none;">
-                        <label>Wymaga platformy</label>
-                        <input type="text" id="inputRequires" placeholder="steam, epic, itp.">
                     </div>
                     
                     <div class="form-group">
@@ -495,88 +440,109 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        // ZMIENIONE: URL API na Render
-        const API_URL = 'https://api-for-launcher.onrender.com/api';
+        // 🔧 POPRAWIONY URL API - bez spacji, bez /api na końcu
+        const API_URL = window.location.origin; // Używa tego samego hosta co strona
         
-        // Nagłówki CORS dla wszystkich zapytań
-        const fetchOptions = {
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-        };
-
-        let games = {};
+        let games = [];
         let editingId = null;
 
         // === API FUNCTIONS ===
 
         async function loadGames() {
             try {
+                console.log('Ładowanie gier z:', `${API_URL}/games`);
+                
                 const response = await fetch(`${API_URL}/games`, {
                     method: 'GET',
-                    ...fetchOptions
+                    headers: {
+                        'Accept': 'application/json'
+                    }
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
-                games = await response.json();
+                const data = await response.json();
+                console.log('Załadowano gier:', data.length);
+                
+                // Konwertuj tablicę na obiekt jeśli trzeba
+                games = Array.isArray(data) ? data : Object.values(data);
                 renderGames();
+                
             } catch (error) {
+                console.error('Błąd ładowania:', error);
                 showToast('Błąd ładowania gier: ' + error.message, 'error');
-                console.error('Błąd CORS lub połączenia:', error);
+                
                 document.getElementById('gamesGrid').innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
                         <h3>⚠️ Błąd połączenia</h3>
-                        <p>Nie można połączyć się z API. Sprawdź czy serwer działa i obsługuje CORS.</p>
+                        <p>${error.message}</p>
+                        <button class="btn btn-primary" onclick="loadGames()" style="margin-top: 20px;">
+                            🔄 Spróbuj ponownie
+                        </button>
                     </div>
                 `;
             }
         }
 
-        async function saveToServer() {
+        async function saveGameToServer(gameData) {
             try {
-                const response = await fetch(`${API_URL}/games`, {
-                    method: 'POST',
-                    ...fetchOptions,
-                    body: JSON.stringify(games)
+                const url = editingId 
+                    ? `${API_URL}/api/games/${editingId}` 
+                    : `${API_URL}/api/games`;
+                
+                const method = editingId ? 'PUT' : 'POST';
+                
+                console.log('Zapisywanie gry:', method, url, gameData);
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(gameData)
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
                 
                 const result = await response.json();
-                if (result.success) {
-                    showToast('Zapisano zmiany w games.json!', 'success');
-                }
+                console.log('Zapisano:', result);
+                
+                showToast(editingId ? 'Zaktualizowano grę!' : 'Dodano nową grę!', 'success');
+                await loadGames();
+                return true;
+                
             } catch (error) {
-                showToast('Błąd zapisywania: ' + error.message, 'error');
-                console.error(error);
+                console.error('Błąd zapisywania:', error);
+                showToast('Błąd: ' + error.message, 'error');
+                return false;
             }
         }
 
         async function deleteGameFromServer(id) {
             try {
-                const response = await fetch(`${API_URL}/games/${id}`, {
+                const response = await fetch(`${API_URL}/api/games/${id}`, {
                     method: 'DELETE',
-                    ...fetchOptions
+                    headers: {
+                        'Accept': 'application/json'
+                    }
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`HTTP ${response.status}`);
                 }
                 
-                const result = await response.json();
-                if (result.success) {
-                    showToast('Usunięto grę!', 'success');
-                    await loadGames();
-                }
+                showToast('Usunięto grę!', 'success');
+                await loadGames();
+                
             } catch (error) {
+                console.error('Błąd usuwania:', error);
                 showToast('Błąd usuwania: ' + error.message, 'error');
-                console.error(error);
             }
         }
 
@@ -585,22 +551,20 @@
         function renderGames() {
             const grid = document.getElementById('gamesGrid');
             const search = document.getElementById('searchInput').value.toLowerCase();
-            const category = document.getElementById('categoryFilter').value;
             
             grid.innerHTML = '';
             
-            const filtered = Object.values(games).filter(game => {
-                const matchesSearch = game.name.toLowerCase().includes(search) || 
-                                    game.developer.toLowerCase().includes(search);
-                const matchesCategory = !category || game.category === category;
-                return matchesSearch && matchesCategory;
+            const filtered = games.filter(game => {
+                const name = (game.name || '').toLowerCase();
+                const dev = (game.developer || '').toLowerCase();
+                return name.includes(search) || dev.includes(search);
             });
             
             if (filtered.length === 0) {
                 grid.innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
                         <h3>📂 Brak gier</h3>
-                        <p>Dodaj pierwszą grę używając przycisku powyżej</p>
+                        <p>${search ? 'Nie znaleziono pasujących gier' : 'Dodaj pierwszą grę używając przycisku powyżej'}</p>
                     </div>
                 `;
                 return;
@@ -608,28 +572,21 @@
             
             filtered.forEach(game => {
                 const isFree = game.price === 0;
-                const needsPlatform = !game.real_download;
                 
                 const card = document.createElement('div');
                 card.className = 'game-card';
                 card.innerHTML = `
-                    <div class="game-header" style="background: ${game.color}20;">
-                        <span style="filter: grayscale(${needsPlatform ? '0.5' : '0'})">${game.icon || '🎮'}</span>
-                        <span class="game-pegi">PEGI ${game.pegi}</span>
+                    <div class="game-header" style="background: ${game.color || '#00d4ff'}20;">
+                        <span>${game.icon || '🎮'}</span>
+                        <span class="game-pegi">PEGI ${game.pegi || 12}</span>
                     </div>
                     <div class="game-body">
                         <div class="game-title">${game.name}</div>
-                        <div class="game-dev">${game.developer}</div>
-                        <div class="game-meta">
-                            <span>${game.size_gb} GB</span>
-                            <span>⭐ ${game.rating}</span>
-                            <span>${game.genre}</span>
-                        </div>
+                        <div class="game-dev">${game.developer || 'Unknown'}</div>
                         <div style="margin-bottom: 10px;">
                             ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
-                            ${needsPlatform ? '<span class="badge badge-platform">Wymaga platformy</span>' : ''}
                         </div>
-                        <div class="game-desc">${game.description}</div>
+                        <div class="game-desc">${game.description || 'Brak opisu'}</div>
                         <div class="game-actions">
                             <button class="btn btn-primary" onclick="editGame('${game.id}')">✏️ Edytuj</button>
                             <button class="btn btn-danger" onclick="deleteGame('${game.id}')">🗑️ Usuń</button>
@@ -649,32 +606,22 @@
             document.getElementById('modal').style.display = 'flex';
             document.getElementById('modalTitle').textContent = id ? 'Edytuj Grę' : 'Dodaj Nową Grę';
             
-            if (id && games[id]) {
-                const game = games[id];
-                document.getElementById('inputId').value = game.id;
-                document.getElementById('inputId').disabled = true;
-                document.getElementById('inputName').value = game.name;
-                document.getElementById('inputDev').value = game.developer || '';
-                document.getElementById('inputGenre').value = game.genre || '';
-                document.getElementById('inputCategory').value = game.category || 'Gry';
-                document.getElementById('inputSubcategory').value = game.subcategory || '';
-                document.getElementById('inputPrice').value = game.price || 0;
-                document.getElementById('inputSize').value = game.size_gb || 1;
-                document.getElementById('inputRating').value = game.rating || 4;
-                document.getElementById('inputPegi').value = game.pegi || 12;
-                document.getElementById('inputIcon').value = game.icon || '';
-                document.getElementById('inputColor').value = game.color || '#00d4ff';
-                document.getElementById('inputUrl').value = game.download_url || '';
-                document.getElementById('inputRealDownload').checked = game.real_download !== false;
-                document.getElementById('inputRequires').value = game.requires || '';
-                document.getElementById('inputDesc').value = game.description || '';
+            if (id) {
+                const game = games.find(g => g.id === id);
+                if (game) {
+                    document.getElementById('inputName').value = game.name || '';
+                    document.getElementById('inputDev').value = game.developer || '';
+                    document.getElementById('inputPrice').value = game.price || 0;
+                    document.getElementById('inputPegi').value = game.pegi || 12;
+                    document.getElementById('inputIcon').value = game.icon || '';
+                    document.getElementById('inputColor').value = game.color || '#00d4ff';
+                    document.getElementById('inputUrl').value = game.download_url || '';
+                    document.getElementById('inputDesc').value = game.description || '';
+                }
             } else {
                 document.getElementById('gameForm').reset();
-                document.getElementById('inputId').disabled = false;
                 document.getElementById('inputColor').value = '#00d4ff';
             }
-            
-            toggleRequires();
         }
 
         function closeModal() {
@@ -682,55 +629,25 @@
             editingId = null;
         }
 
-        function toggleRequires() {
-            const realDownload = document.getElementById('inputRealDownload').checked;
-            document.getElementById('requiresGroup').style.display = realDownload ? 'none' : 'block';
-        }
-
         async function saveGame(e) {
             e.preventDefault();
             
-            const id = document.getElementById('inputId').value.trim().toLowerCase().replace(/\s+/g, '_');
-            
-            if (!editingId && games[id]) {
-                showToast('Gra z tym ID już istnieje!', 'error');
-                return;
-            }
-            
-            const game = {
-                id: id,
+            const gameData = {
                 name: document.getElementById('inputName').value,
                 developer: document.getElementById('inputDev').value,
-                description: document.getElementById('inputDesc').value,
-                genre: document.getElementById('inputGenre').value,
-                category: document.getElementById('inputCategory').value,
-                subcategory: document.getElementById('inputSubcategory').value,
                 price: parseFloat(document.getElementById('inputPrice').value) || 0,
-                size_gb: parseFloat(document.getElementById('inputSize').value) || 1,
-                rating: parseFloat(document.getElementById('inputRating').value) || 4,
                 pegi: parseInt(document.getElementById('inputPegi').value) || 12,
                 icon: document.getElementById('inputIcon').value || '🎮',
                 color: document.getElementById('inputColor').value,
                 download_url: document.getElementById('inputUrl').value || null,
-                real_download: document.getElementById('inputRealDownload').checked
+                description: document.getElementById('inputDesc').value,
+                id: editingId // Dla PUT, serwer użyje tego ID
             };
             
-            if (!game.real_download) {
-                game.requires = document.getElementById('inputRequires').value || 'platforma';
+            const success = await saveGameToServer(gameData);
+            if (success) {
+                closeModal();
             }
-            
-            // Usuń starą wersję jeśli edytujemy i zmieniliśmy ID
-            if (editingId && editingId !== id) {
-                delete games[editingId];
-            }
-            
-            games[id] = game;
-            
-            // Zapisz na serwerze
-            await saveToServer();
-            
-            renderGames();
-            closeModal();
         }
 
         function editGame(id) {
@@ -738,7 +655,8 @@
         }
 
         async function deleteGame(id) {
-            if (!confirm(`Czy na pewno chcesz usunąć "${games[id].name}"?`)) return;
+            const game = games.find(g => g.id === id);
+            if (!confirm(`Czy na pewno chcesz usunąć "${game?.name || id}"?`)) return;
             await deleteGameFromServer(id);
         }
 
