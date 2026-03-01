@@ -7,17 +7,15 @@ const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder, ChannelType,
 
 const app = express();
 
-// 🔴 WAŻNE: Użyj zmiennych środowiskowych w Render!
+// Konfiguracja
 const PORT = process.env.PORT || 3000;
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN; // Ustaw w Render!
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID || '1477574526933012541';
 const STORAGE_CATEGORY_ID = process.env.STORAGE_CATEGORY_ID || '1477579473611128843';
 const NOTIFICATION_CHANNEL_ID = process.env.NOTIFICATION_CHANNEL_ID || '1477577363285082123';
 
-// Sprawdź czy token istnieje
 if (!DISCORD_TOKEN) {
-    console.error('❌ Brak DISCORD_TOKEN! Ustaw w zmiennych środowiskowych Render.');
-    console.error('   Dashboard Render → Environment → Add Variable');
+    console.error('❌ Brak DISCORD_TOKEN! Ustaw w zmiennych środowiskowych.');
     process.exit(1);
 }
 
@@ -41,12 +39,37 @@ let notificationChannel = null;
 const userChannelsCache = new Map();
 let gamesCache = {};
 
-// === START SERWERA HTTP - NATYCHMIAST ===
+// === START SERWERA HTTP ===
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
 });
 
-// Health check - działa od razu
+// === ENDPOINT /admin - SERWUJE PLIK admin.html ===
+app.get('/admin', async (req, res) => {
+    try {
+        const adminPath = path.join(__dirname, 'admin.html');
+        const html = await fs.readFile(adminPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (error) {
+        console.error('❌ Błąd wczytywania admin.html:', error);
+        res.status(500).send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>Błąd</title></head>
+            <body style="font-family: Arial; padding: 50px; text-align: center;">
+                <h1>❌ Błąd 500</h1>
+                <p>Nie można wczytać pliku admin.html</p>
+                <p>Upewnij się, że plik istnieje w katalogu aplikacji</p>
+                <hr>
+                <small>${error.message}</small>
+            </body>
+            </html>
+        `);
+    }
+});
+
+// Health check
 app.get('/health', (req, res) => {
     res.json({
         status: discordReady ? 'OK' : 'INITIALIZING',
@@ -60,7 +83,7 @@ app.get('/', (req, res) => {
     res.json({ 
         message: 'Nebula Game Server',
         status: discordReady ? 'online' : 'booting',
-        endpoints: ['/health', '/games', '/api/auth/login', '/api/auth/register']
+        endpoints: ['/health', '/admin', '/games', '/api/auth/login', '/api/auth/register']
     });
 });
 
@@ -94,7 +117,6 @@ async function initDiscord() {
                 discordReady = true;
                 console.log('✅ Discord gotowy!');
                 
-                // Auto-sync co 5 minut
                 setInterval(syncGamesFromDiscord, 300000);
                 
             } catch (error) {
@@ -109,7 +131,6 @@ async function initDiscord() {
     }
 }
 
-// Uruchom Discord w tle
 initDiscord();
 
 // === FUNKCJE POMOCNICZE ===
