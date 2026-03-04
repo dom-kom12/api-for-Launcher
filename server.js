@@ -13,6 +13,7 @@ const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID || '1477574526933012541';
 const STORAGE_CATEGORY_ID = process.env.STORAGE_CATEGORY_ID || '1477579473611128843';
 const NOTIFICATION_CHANNEL_ID = process.env.NOTIFICATION_CHANNEL_ID || '1477577363285082123';
+const GAMES_CHANNEL_ID = process.env.GAMES_CHANNEL_ID; // Opcjonalnie: istniejący kanał na games.json
 
 if (!DISCORD_TOKEN) {
     console.error('❌ Brak DISCORD_TOKEN! Ustaw w zmiennych środowiskowych.');
@@ -36,6 +37,7 @@ let discordReady = false;
 let guild = null;
 let storageCategory = null;
 let notificationChannel = null;
+let gamesChannel = null; // Kanał na games.json
 const userChannelsCache = new Map();
 let gamesCache = {};
 
@@ -45,11 +47,11 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 // === START SERWERA HTTP - NATYCHMIAST ===
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
-    console.log(`📡 Admin panel: http://localhost:${PORT}/admin`);
+    console.log(`📡 Admin panel: http://localhost:${PORT}/admin.html`);
 });
 
-// === ENDPOINT /admin - SERWUJE PLIK admin.html ===
-app.get('/admin', async (req, res) => {
+// === ENDPOINT /admin.html - SERWUJE PLIK admin.html ===
+app.get('/admin.html', async (req, res) => {
     try {
         const adminPath = path.join(__dirname, 'admin.html');
         const html = await fs.readFile(adminPath, 'utf-8');
@@ -87,7 +89,7 @@ app.get('/', (req, res) => {
     res.json({ 
         message: 'Nebula Game Server',
         status: discordReady ? 'online' : 'booting',
-        endpoints: ['/health', '/admin', '/games', '/api/auth/login', '/api/auth/register']
+        endpoints: ['/health', '/admin.html', '/games', '/api/auth/login', '/api/auth/register']
     });
 });
 
@@ -116,6 +118,9 @@ async function initDiscord() {
                 storageCategory = await guild.channels.fetch(STORAGE_CATEGORY_ID);
                 notificationChannel = await guild.channels.fetch(NOTIFICATION_CHANNEL_ID);
                 
+                // Inicjalizacja kanału na games.json
+                await initGamesChannel();
+                
                 await loadExistingUserChannels();
                 await syncGamesFromDiscord();
                 
@@ -134,6 +139,112 @@ async function initDiscord() {
         
     } catch (error) {
         console.error('❌ Błąd Discord:', error);
+    }
+}
+
+// === INICJALIZACJA KANAŁU GAMES.JSON ===
+async function initGamesChannel() {
+    try {
+        // Jeśli podano ID istniejącego kanału, użyj go
+        if (GAMES_CHANNEL_ID) {
+            try {
+                gamesChannel = await guild.channels.fetch(GAMES_CHANNEL_ID);
+                console.log(`📁 Używam istniejącego kanału games.json: ${gamesChannel.name}`);
+                return;
+            } catch (e) {
+                console.log('⚠️ Nie znaleziono kanału z GAMES_CHANNEL_ID, tworzę nowy...');
+            }
+        }
+
+        // Szukaj istniejącego kanału o nazwie games-json
+        const existingChannel = guild.channels.cache.find(c => 
+            c.name === 'games-json' && c.parentId === STORAGE_CATEGORY_ID
+        );
+
+        if (existingChannel) {
+            gamesChannel = existingChannel;
+            console.log(`📁 Znaleziono istniejący kanał games-json`);
+        } else {
+            // Utwórz nowy kanał
+            gamesChannel = await guild.channels.create({
+                name: 'games-json',
+                type: ChannelType.GuildText,
+                parent: STORAGE_CATEGORY_ID,
+                topic: '🎮 Automatycznie aktualizowany plik games.json | Nie usuwaj!',
+                permissionOverwrites: [
+                    { 
+                        id: guild.id, 
+                        deny: [PermissionFlagsBits.SendMessages],
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]
+                    },
+                    { 
+                        id: discordClient.user.id, 
+                        allow: [
+                            PermissionFlagsBits.ViewChannel, 
+                            PermissionFlagsBits.SendMessages, 
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.ManageMessages
+                        ] 
+                    }
+                ]
+            });
+            console.log(`✅ Utworzono kanał games-json: ${gamesChannel.id}`);
+        }
+    } catch (error) {
+        console.error('❌ Błąd tworzenia kanału games.json:', error);
+        throw error;
+    }
+}
+
+// === WYSYŁANIE GAMES.JSON NA KANAŁ ===
+async function uploadGamesJsonToDiscord() {
+    if (!discordReady || !gamesChannel) {
+        console.log('⚠️ Nie można wysłać games.json - Discord niegotowy lub brak kanału');
+        return false;
+    }
+
+    try {
+        const gamesData = {
+            guildId: GUILD_ID,
+            guildName: guild.name,
+            updatedAt: new Date().toISOString(),
+            totalGames: gamesCache.length,
+            games: gamesCache
+        };
+
+        const jsonContent = JSON.stringify(gamesData, null, 2);
+        const buffer = Buffer.from(jsonContent, 'utf-8');
+        const attachment = new AttachmentBuilder(buffer, { name: 'games.json' });
+
+        // Usuń poprzednie wiadomości bota z plikiem (zachowaj ostatnie 3 dla historii)
+        const messages = await gamesChannel.messages.fetch({ limit: 10 });
+        const botMessages = messages.filter(m => 
+            m.author.id === discordClient.user.id && 
+            m.attachments.some(a => a.name === 'games.json')
+        );
+
+        // Usuń stare wiadomości (pozostaw max 2)
+        const messagesToDelete = botMessages.sort((a, b) => b.createdTimestamp - a.createdTimestamp).slice(2);
+        for (const msg of messagesToDelete.values()) {
+            try {
+                await msg.delete();
+                await new Promise(r => setTimeout(r, 500)); // Rate limit protection
+            } catch (e) {
+                // Ignoruj błędy usuwania
+            }
+        }
+
+        // Wyślij nowy plik
+        const message = await gamesChannel.send({
+            content: `🎮 **Games.json** | Aktualizacja: <t:${Math.floor(Date.now()/1000)}:F> | Gier: ${gamesCache.length}`,
+            files: [attachment]
+        });
+
+        console.log(`📤 Wysłano games.json na kanał (wiadomość: ${message.id})`);
+        return true;
+    } catch (error) {
+        console.error('❌ Błąd wysyłania games.json:', error);
+        return false;
     }
 }
 
@@ -297,6 +408,66 @@ async function loadGlobalFile(filename, defaultData = {}) {
     }
 }
 
+// === CZAT ===
+async function getChatChannelName(user1, user2) {
+    const sorted = [user1, user2].sort();
+    return `chat-${sorted[0]}-and-${sorted[1]}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+}
+
+async function loadChatFile(user1, user2) {
+    try {
+        const channelName = await getChatChannelName(user1, user2);
+        const channel = guild.channels.cache.find(c => 
+            c.name === channelName && c.parentId === STORAGE_CATEGORY_ID
+        );
+        
+        if (!channel) return null;
+        
+        const messages = await channel.messages.fetch({ limit: 1 });
+        const msg = messages.first();
+        
+        if (!msg || msg.attachments.size === 0) return null;
+        
+        const attachment = msg.attachments.first();
+        const res = await fetch(attachment.url);
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function saveChatFile(user1, user2, data) {
+    const channelName = await getChatChannelName(user1, user2);
+    let channel = guild.channels.cache.find(c => 
+        c.name === channelName && c.parentId === STORAGE_CATEGORY_ID
+    );
+    
+    if (!channel) {
+        channel = await guild.channels.create({
+            name: channelName,
+            type: ChannelType.GuildText,
+            parent: storageCategory.id,
+            permissionOverwrites: [
+                { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                { id: discordClient.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] }
+            ]
+        });
+    }
+    
+    const buffer = Buffer.from(JSON.stringify(data, null, 2));
+    const attachment = new AttachmentBuilder(buffer, { name: 'chat.json' });
+    
+    const messages = await channel.messages.fetch({ limit: 10 });
+    for (const msg of messages.values()) {
+        try { await msg.delete(); } catch {}
+    }
+    
+    return await channel.send({
+        content: `💬 ${user1} ↔ ${user2}`,
+        files: [attachment]
+    });
+}
+
 // === GAMES ===
 async function syncGamesFromDiscord() {
     if (!discordReady) return;
@@ -324,6 +495,10 @@ async function saveGame(gameId, gameData) {
     
     // Zapisz do Discorda jako tablica
     await saveGlobalFile('games.json', gamesCache, '🎮 Biblioteka gier');
+    
+    // 🔥 WYŚLIJ PLIK NA DEDYKOWANY KANAŁ
+    await uploadGamesJsonToDiscord();
+    
     return gameWithId;
 }
 
@@ -333,6 +508,10 @@ async function deleteGame(gameId) {
     
     if (gamesCache.length < initialLength) {
         await saveGlobalFile('games.json', gamesCache, '🎮 Biblioteka gier');
+        
+        // 🔥 WYŚLIJ AKTUALIZACJĘ NA KANAŁ
+        await uploadGamesJsonToDiscord();
+        
         return true;
     }
     return false;
