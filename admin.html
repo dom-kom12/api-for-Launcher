@@ -25,11 +25,19 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
         }
         
         .header h1 {
             color: #00d4ff;
             font-size: 28px;
+        }
+
+        .guild-info {
+            color: #6a6a7a;
+            font-size: 14px;
+            margin-top: 5px;
         }
         
         .btn {
@@ -65,11 +73,39 @@
             background: #ffaa00;
             color: #000;
         }
+
+        .btn-secondary {
+            background: #2a2a3a;
+            color: #fff;
+            border: 1px solid #3a3a4a;
+        }
+
+        .btn-secondary:hover {
+            background: #3a3a4a;
+        }
         
         .container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 30px;
+        }
+
+        .setup-warning {
+            background: #ffaa0020;
+            border: 1px solid #ffaa00;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .setup-warning.active {
+            display: block;
+        }
+
+        .setup-warning h3 {
+            color: #ffaa00;
+            margin-bottom: 10px;
         }
         
         .toolbar {
@@ -77,6 +113,7 @@
             gap: 15px;
             margin-bottom: 30px;
             flex-wrap: wrap;
+            align-items: center;
         }
         
         .search-box {
@@ -332,6 +369,11 @@
         .toast.error {
             background: #ff3366;
         }
+
+        .toast.info {
+            background: #00d4ff;
+            color: #000;
+        }
         
         .loading {
             display: inline-block;
@@ -346,19 +388,40 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        .guild-selector {
+            background: #16161f;
+            border: 1px solid #2a2a3a;
+            padding: 8px 15px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            min-width: 200px;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🌌 NEBULA ADMIN</h1>
         <div>
+            <h1>🌌 NEBULA ADMIN</h1>
+            <div class="guild-info" id="guildInfo">Ładowanie...</div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="text" id="guildIdInput" placeholder="Wklej Guild ID" class="guild-selector" style="display: none;">
+            <button class="btn btn-secondary" onclick="toggleGuildInput()" id="guildBtn">Zmień Serwer</button>
             <button class="btn btn-primary" onclick="openModal()">➕ Dodaj Grę</button>
         </div>
     </div>
     
     <div class="container">
+        <div class="setup-warning" id="setupWarning">
+            <h3>⚠️ Brak skonfigurowanego kanału</h3>
+            <p>Użyj komendy <code>/setup</code> na serwerze Discord, aby utworzyć kanał z plikiem games.json.</p>
+        </div>
+
         <div class="toolbar">
             <input type="text" class="search-box" id="searchInput" placeholder="🔍 Szukaj gry..." onkeyup="filterGames()">
+            <button class="btn btn-secondary" onclick="refreshData()">🔄 Odśwież</button>
         </div>
         
         <div class="games-grid" id="gamesGrid">
@@ -440,23 +503,59 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        // 🔧 POPRAWIONY URL API - bez spacji, bez /api na końcu
-        const API_URL = window.location.origin; // Używa tego samego hosta co strona
+        const API_URL = window.location.origin;
+        
+        // Pobierz guildId z URL lub localStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentGuildId = urlParams.get('guildId') || localStorage.getItem('nebula_guild_id');
         
         let games = [];
         let editingId = null;
 
-        // === API FUNCTIONS ===
+        // Inicjalizacja
+        if (!currentGuildId) {
+            document.getElementById('guildInfo').innerHTML = '❌ Nie wybrano serwera. Wpisz Guild ID powyżej.';
+            document.getElementById('guildIdInput').style.display = 'block';
+            document.getElementById('gamesGrid').innerHTML = `
+                <div class="empty-state" style="grid-column: 1/-1;">
+                    <h3>🔧 Konfiguracja wymagana</h3>
+                    <p>Wpisz Guild ID serwera Discord powyżej lub dodaj <code>?guildId=TWOJE_ID</code> do URL</p>
+                </div>
+            `;
+        } else {
+            localStorage.setItem('nebula_guild_id', currentGuildId);
+            loadGames();
+        }
+
+        function toggleGuildInput() {
+            const input = document.getElementById('guildIdInput');
+            if (input.style.display === 'none') {
+                input.style.display = 'block';
+                input.focus();
+            } else {
+                const newGuildId = input.value.trim();
+                if (newGuildId) {
+                    window.location.href = `${window.location.pathname}?guildId=${newGuildId}`;
+                }
+            }
+        }
+
+        // Enter w polu guild ID
+        document.getElementById('guildIdInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                toggleGuildInput();
+            }
+        });
 
         async function loadGames() {
+            if (!currentGuildId) return;
+
             try {
-                console.log('Ładowanie gier z:', `${API_URL}/games`);
+                document.getElementById('guildInfo').innerHTML = `Serwer ID: <code>${currentGuildId}</code> <span class="loading"></span>`;
                 
-                const response = await fetch(`${API_URL}/games`, {
+                const response = await fetch(`${API_URL}/games?guildId=${currentGuildId}`, {
                     method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    }
+                    headers: { 'Accept': 'application/json' }
                 });
                 
                 if (!response.ok) {
@@ -464,15 +563,15 @@
                 }
                 
                 const data = await response.json();
-                console.log('Załadowano gier:', data.length);
-                
-                // Konwertuj tablicę na obiekt jeśli trzeba
                 games = Array.isArray(data) ? data : Object.values(data);
+                
+                document.getElementById('guildInfo').innerHTML = `Serwer ID: <code>${currentGuildId}</code> | Gier: ${games.length}`;
                 renderGames();
                 
             } catch (error) {
                 console.error('Błąd ładowania:', error);
                 showToast('Błąd ładowania gier: ' + error.message, 'error');
+                document.getElementById('guildInfo').innerHTML = `Serwer ID: <code>${currentGuildId}</code> <span style="color: #ff3366">● Błąd</span>`;
                 
                 document.getElementById('gamesGrid').innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
@@ -486,15 +585,25 @@
             }
         }
 
+        function refreshData() {
+            showToast('Odświeżanie...', 'info');
+            loadGames();
+        }
+
         async function saveGameToServer(gameData) {
             try {
+                const payload = {
+                    ...gameData,
+                    guildId: currentGuildId
+                };
+
                 const url = editingId 
                     ? `${API_URL}/api/games/${editingId}` 
                     : `${API_URL}/api/games`;
                 
                 const method = editingId ? 'PUT' : 'POST';
                 
-                console.log('Zapisywanie gry:', method, url, gameData);
+                console.log('Zapisywanie:', method, url, payload);
                 
                 const response = await fetch(url, {
                     method: method,
@@ -502,7 +611,7 @@
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify(gameData)
+                    body: JSON.stringify(payload)
                 });
                 
                 if (!response.ok) {
@@ -529,8 +638,10 @@
                 const response = await fetch(`${API_URL}/api/games/${id}`, {
                     method: 'DELETE',
                     headers: {
+                        'Content-Type': 'application/json',
                         'Accept': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify({ guildId: currentGuildId })
                 });
                 
                 if (!response.ok) {
@@ -545,8 +656,6 @@
                 showToast('Błąd usuwania: ' + error.message, 'error');
             }
         }
-
-        // === UI FUNCTIONS ===
 
         function renderGames() {
             const grid = document.getElementById('gamesGrid');
@@ -602,6 +711,11 @@
         }
 
         function openModal(id = null) {
+            if (!currentGuildId) {
+                showToast('Najpierw wybierz serwer Discord!', 'error');
+                return;
+            }
+
             editingId = id;
             document.getElementById('modal').style.display = 'flex';
             document.getElementById('modalTitle').textContent = id ? 'Edytuj Grę' : 'Dodaj Nową Grę';
@@ -640,8 +754,7 @@
                 icon: document.getElementById('inputIcon').value || '🎮',
                 color: document.getElementById('inputColor').value,
                 download_url: document.getElementById('inputUrl').value || null,
-                description: document.getElementById('inputDesc').value,
-                id: editingId // Dla PUT, serwer użyje tego ID
+                description: document.getElementById('inputDesc').value
             };
             
             const success = await saveGameToServer(gameData);
@@ -669,9 +782,6 @@
                 toast.classList.remove('show');
             }, 3000);
         }
-
-        // Inicjalizacja
-        loadGames();
 
         // Zamknij modal po kliknięciu poza nim
         document.getElementById('modal').addEventListener('click', (e) => {
