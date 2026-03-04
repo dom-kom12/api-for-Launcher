@@ -63,6 +63,12 @@
             background: #00ff88;
             color: #000;
         }
+
+        .btn-success:disabled {
+            background: #2a3a2a;
+            color: #666;
+            cursor: not-allowed;
+        }
         
         .btn-danger {
             background: #ff3366;
@@ -129,7 +135,7 @@
         
         .games-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
             gap: 20px;
         }
         
@@ -164,6 +170,18 @@
             border-radius: 4px;
             font-size: 12px;
             font-weight: bold;
+        }
+
+        .game-size {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #00d4ff;
         }
         
         .game-body {
@@ -200,6 +218,40 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+
+        .game-requirements {
+            background: #0a0a0f;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+
+        .game-requirements summary {
+            cursor: pointer;
+            color: #00d4ff;
+            font-weight: bold;
+        }
+
+        .req-section {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #2a2a3a;
+        }
+
+        .req-section h4 {
+            color: #ffaa00;
+            margin-bottom: 5px;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .req-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+            color: #a0a0b0;
+        }
         
         .game-actions {
             display: flex;
@@ -231,11 +283,6 @@
             color: #000;
         }
         
-        .badge-platform {
-            background: #ff3366;
-            color: #fff;
-        }
-        
         .modal-overlay {
             display: none;
             position: fixed;
@@ -247,6 +294,7 @@
             z-index: 1000;
             justify-content: center;
             align-items: center;
+            overflow-y: auto;
         }
         
         .modal {
@@ -254,9 +302,10 @@
             border: 1px solid #2a2a3a;
             border-radius: 16px;
             width: 90%;
-            max-width: 600px;
+            max-width: 700px;
             max-height: 90vh;
             overflow-y: auto;
+            margin: 20px 0;
         }
         
         .modal-header {
@@ -265,6 +314,10 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            position: sticky;
+            top: 0;
+            background: #16161f;
+            z-index: 10;
         }
         
         .modal-header h2 {
@@ -282,9 +335,19 @@
         .modal-body {
             padding: 25px;
         }
+
+        .section-title {
+            color: #00d4ff;
+            font-size: 14px;
+            margin: 20px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2a2a3a;
+            padding-bottom: 5px;
+        }
         
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
         
         .form-group label {
@@ -320,17 +383,11 @@
             grid-template-columns: 1fr 1fr;
             gap: 15px;
         }
-        
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .checkbox-group input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            accent-color: #00d4ff;
+
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
         }
         
         .empty-state {
@@ -389,14 +446,51 @@
             to { transform: rotate(360deg); }
         }
 
-        .guild-selector {
-            background: #16161f;
+        .compat-check {
+            background: #1a1a2e;
             border: 1px solid #2a2a3a;
-            padding: 8px 15px;
             border-radius: 8px;
-            color: #fff;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .compat-check h3 {
+            color: #00d4ff;
+            margin-bottom: 10px;
             font-size: 14px;
-            min-width: 200px;
+        }
+
+        .compat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a3a;
+        }
+
+        .compat-item:last-child {
+            border-bottom: none;
+        }
+
+        .compat-status {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .compat-ok {
+            background: #00ff8830;
+            color: #00ff88;
+        }
+
+        .compat-fail {
+            background: #ff336630;
+            color: #ff3366;
+        }
+
+        .compat-unknown {
+            background: #ffaa0030;
+            color: #ffaa00;
         }
     </style>
 </head>
@@ -407,21 +501,21 @@
             <div class="guild-info" id="guildInfo">Ładowanie...</div>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
-            <input type="text" id="guildIdInput" placeholder="Wklej Guild ID" class="guild-selector" style="display: none;">
-            <button class="btn btn-secondary" onclick="toggleGuildInput()" id="guildBtn">Zmień Serwer</button>
+            <button class="btn btn-secondary" onclick="checkCompatibility()">🖥️ Sprawdź PC</button>
             <button class="btn btn-primary" onclick="openModal()">➕ Dodaj Grę</button>
         </div>
     </div>
     
     <div class="container">
-        <div class="setup-warning" id="setupWarning">
-            <h3>⚠️ Brak skonfigurowanego kanału</h3>
-            <p>Użyj komendy <code>/setup</code> na serwerze Discord, aby utworzyć kanał z plikiem games.json.</p>
-        </div>
-
         <div class="toolbar">
             <input type="text" class="search-box" id="searchInput" placeholder="🔍 Szukaj gry..." onkeyup="filterGames()">
             <button class="btn btn-secondary" onclick="refreshData()">🔄 Odśwież</button>
+        </div>
+
+        <!-- Panel kompatybilności -->
+        <div class="compat-check" id="compatPanel" style="display: none;">
+            <h3>🖥️ Twoja Konfiguracja</h3>
+            <div id="compatList"></div>
         </div>
         
         <div class="games-grid" id="gamesGrid">
@@ -443,9 +537,11 @@
                 <form id="gameForm" onsubmit="saveGame(event)">
                     <input type="hidden" id="gameId">
                     
+                    <div class="section-title">Podstawowe Informacje</div>
+                    
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Nazwa gry</label>
+                            <label>Nazwa gry *</label>
                             <input type="text" id="inputName" placeholder="Minecraft Launcher" required>
                         </div>
                         <div class="form-group">
@@ -454,7 +550,7 @@
                         </div>
                     </div>
                     
-                    <div class="form-row">
+                    <div class="form-row-3">
                         <div class="form-group">
                             <label>Cena (zł)</label>
                             <input type="number" id="inputPrice" step="0.01" value="0" min="0">
@@ -468,6 +564,10 @@
                                 <option value="16">16</option>
                                 <option value="18">18</option>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Rozmiar (GB)</label>
+                            <input type="number" id="inputSize" step="0.1" min="0" placeholder="np. 15.5">
                         </div>
                     </div>
                     
@@ -491,8 +591,64 @@
                         <label>Opis</label>
                         <textarea id="inputDesc" rows="3" placeholder="Krótki opis gry..."></textarea>
                     </div>
+
+                    <div class="section-title">Wymagania Minimalne</div>
                     
-                    <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>System OS</label>
+                            <input type="text" id="reqMinOs" placeholder="Windows 10 64-bit">
+                        </div>
+                        <div class="form-group">
+                            <label>Procesor</label>
+                            <input type="text" id="reqMinCpu" placeholder="Intel i3-4170">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row-3">
+                        <div class="form-group">
+                            <label>RAM</label>
+                            <input type="text" id="reqMinRam" placeholder="8 GB">
+                        </div>
+                        <div class="form-group">
+                            <label>Karta graficzna</label>
+                            <input type="text" id="reqMinGpu" placeholder="GTX 1050">
+                        </div>
+                        <div class="form-group">
+                            <label>Dysk</label>
+                            <input type="text" id="reqMinStorage" placeholder="20 GB">
+                        </div>
+                    </div>
+
+                    <div class="section-title">Wymagania Rekomendowane</div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>System OS</label>
+                            <input type="text" id="reqRecOs" placeholder="Windows 11 64-bit">
+                        </div>
+                        <div class="form-group">
+                            <label>Procesor</label>
+                            <input type="text" id="reqRecCpu" placeholder="Intel i5-10400">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row-3">
+                        <div class="form-group">
+                            <label>RAM</label>
+                            <input type="text" id="reqRecRam" placeholder="16 GB">
+                        </div>
+                        <div class="form-group">
+                            <label>Karta graficzna</label>
+                            <input type="text" id="reqRecGpu" placeholder="RTX 3060">
+                        </div>
+                        <div class="form-group">
+                            <label>Dysk</label>
+                            <input type="text" id="reqRecStorage" placeholder="20 GB SSD">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px; margin-top: 20px;">
                         💾 Zapisz Grę
                     </button>
                 </form>
@@ -505,74 +661,33 @@
     <script>
         const API_URL = window.location.origin;
         
-        // Pobierz guildId z URL lub localStorage
-        const urlParams = new URLSearchParams(window.location.search);
-        let currentGuildId = urlParams.get('guildId') || localStorage.getItem('nebula_guild_id');
-        
         let games = [];
         let editingId = null;
+        let userPC = null; // Konfiguracja PC użytkownika
 
         // Inicjalizacja
-        if (!currentGuildId) {
-            document.getElementById('guildInfo').innerHTML = '❌ Nie wybrano serwera. Wpisz Guild ID powyżej.';
-            document.getElementById('guildIdInput').style.display = 'block';
-            document.getElementById('gamesGrid').innerHTML = `
-                <div class="empty-state" style="grid-column: 1/-1;">
-                    <h3>🔧 Konfiguracja wymagana</h3>
-                    <p>Wpisz Guild ID serwera Discord powyżej lub dodaj <code>?guildId=TWOJE_ID</code> do URL</p>
-                </div>
-            `;
-        } else {
-            localStorage.setItem('nebula_guild_id', currentGuildId);
-            loadGames();
-        }
-
-        function toggleGuildInput() {
-            const input = document.getElementById('guildIdInput');
-            if (input.style.display === 'none') {
-                input.style.display = 'block';
-                input.focus();
-            } else {
-                const newGuildId = input.value.trim();
-                if (newGuildId) {
-                    window.location.href = `${window.location.pathname}?guildId=${newGuildId}`;
-                }
-            }
-        }
-
-        // Enter w polu guild ID
-        document.getElementById('guildIdInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                toggleGuildInput();
-            }
-        });
+        loadGames();
 
         async function loadGames() {
-            if (!currentGuildId) return;
-
             try {
-                document.getElementById('guildInfo').innerHTML = `Serwer ID: <code>${currentGuildId}</code> <span class="loading"></span>`;
+                document.getElementById('guildInfo').innerHTML = `<span class="loading"></span> Ładowanie...`;
                 
-                const response = await fetch(`${API_URL}/games?guildId=${currentGuildId}`, {
+                const response = await fetch(`${API_URL}/games`, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
                 const data = await response.json();
-                games = Array.isArray(data) ? data : Object.values(data);
+                games = Array.isArray(data) ? data : [];
                 
-                document.getElementById('guildInfo').innerHTML = `Serwer ID: <code>${currentGuildId}</code> | Gier: ${games.length}`;
+                document.getElementById('guildInfo').innerHTML = `Gier w bazie: ${games.length}`;
                 renderGames();
                 
             } catch (error) {
                 console.error('Błąd ładowania:', error);
                 showToast('Błąd ładowania gier: ' + error.message, 'error');
-                document.getElementById('guildInfo').innerHTML = `Serwer ID: <code>${currentGuildId}</code> <span style="color: #ff3366">● Błąd</span>`;
-                
                 document.getElementById('gamesGrid').innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
                         <h3>⚠️ Błąd połączenia</h3>
@@ -590,20 +705,98 @@
             loadGames();
         }
 
+        // Sprawdzenie kompatybilności PC
+        function checkCompatibility() {
+            // Symulacja lub pobranie z localStorage
+            const saved = localStorage.getItem('userPCConfig');
+            if (saved) {
+                userPC = JSON.parse(saved);
+                showCompatPanel();
+                renderGames(); // Przerenderuj z nowymi danymi
+                return;
+            }
+
+            // Formularz wprowadzenia configu
+            const os = prompt('Twój system operacyjny:', 'Windows 10');
+            if (!os) return;
+            
+            const ram = prompt('Ilość RAM (GB):', '16');
+            if (!ram) return;
+            
+            const cpu = prompt('Procesor:', 'Intel i5');
+            if (!cpu) return;
+            
+            const gpu = prompt('Karta graficzna:', 'GTX 1060');
+            if (!gpu) return;
+
+            userPC = {
+                os: os.toLowerCase(),
+                ram: parseInt(ram) || 0,
+                cpu: cpu.toLowerCase(),
+                gpu: gpu.toLowerCase(),
+                raw: { os, ram: ram + ' GB', cpu, gpu }
+            };
+
+            localStorage.setItem('userPCConfig', JSON.stringify(userPC));
+            showCompatPanel();
+            renderGames();
+        }
+
+        function showCompatPanel() {
+            if (!userPC) return;
+            
+            document.getElementById('compatPanel').style.display = 'block';
+            document.getElementById('compatList').innerHTML = `
+                <div class="compat-item">
+                    <span>🖥️ System</span>
+                    <span class="compat-status compat-ok">${userPC.raw.os}</span>
+                </div>
+                <div class="compat-item">
+                    <span>🧠 RAM</span>
+                    <span class="compat-status compat-ok">${userPC.raw.ram}</span>
+                </div>
+                <div class="compat-item">
+                    <span>⚡ Procesor</span>
+                    <span class="compat-status compat-ok">${userPC.raw.cpu}</span>
+                </div>
+                <div class="compat-item">
+                    <span>🎮 GPU</span>
+                    <span class="compat-status compat-ok">${userPC.raw.gpu}</span>
+                </div>
+            `;
+        }
+
+        // Sprawdź czy PC spełnia wymagania
+        function checkGameCompatibility(game) {
+            if (!userPC || !game.requirements || !game.requirements.min) {
+                return { compatible: true, reason: 'Brak danych' };
+            }
+
+            const min = game.requirements.min;
+            
+            // Prosta heurystyka - w produkcji warto użyć biblioteki do porównywania GPU/CPU
+            const ramMatch = min.ram ? parseInt(min.ram) <= userPC.ram : true;
+            
+            // Sprawdzenie OS (proste)
+            const osMatch = min.os ? 
+                userPC.os.includes(min.os.toLowerCase().split(' ')[0]) || 
+                min.os.toLowerCase().includes(userPC.os.split(' ')[0]) : true;
+
+            if (!ramMatch) return { compatible: false, reason: `Za mało RAM (wymagane: ${min.ram})` };
+            if (!osMatch) return { compatible: false, reason: `Niekompatybilny system (wymagany: ${min.os})` };
+            
+            return { compatible: true, reason: 'OK' };
+        }
+
         async function saveGameToServer(gameData) {
             try {
-                const payload = {
-                    ...gameData,
-                    guildId: currentGuildId
-                };
-
                 const url = editingId 
                     ? `${API_URL}/api/games/${editingId}` 
                     : `${API_URL}/api/games`;
                 
                 const method = editingId ? 'PUT' : 'POST';
                 
-                console.log('Zapisywanie:', method, url, payload);
+                console.log('Zapisywanie:', method, url, gameData);
                 
                 const response = await fetch(url, {
                     method: method,
@@ -611,7 +804,7 @@
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(gameData)
                 });
                 
                 if (!response.ok) {
@@ -637,16 +830,10 @@
             try {
                 const response = await fetch(`${API_URL}/api/games/${id}`, {
                     method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ guildId: currentGuildId })
+                    headers: { 'Accept': 'application/json' }
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
                 showToast('Usunięto grę!', 'success');
                 await loadGames();
@@ -681,6 +868,49 @@
             
             filtered.forEach(game => {
                 const isFree = game.price === 0;
+                const size = game.size ? `${game.size} GB` : 'N/A';
+                const compat = checkGameCompatibility(game);
+                
+                // Generuj HTML wymagań
+                let reqHtml = '';
+                if (game.requirements && (game.requirements.min || game.requirements.rec)) {
+                    const min = game.requirements.min || {};
+                    const rec = game.requirements.rec || {};
+                    
+                    reqHtml = `
+                        <details class="game-requirements">
+                            <summary>🖥️ Wymagania systemowe</summary>
+                            ${min.os ? `
+                            <div class="req-section">
+                                <h4>Minimalne</h4>
+                                ${min.os ? `<div class="req-item"><span>OS:</span><span>${min.os}</span></div>` : ''}
+                                ${min.cpu ? `<div class="req-item"><span>CPU:</span><span>${min.cpu}</span></div>` : ''}
+                                ${min.ram ? `<div class="req-item"><span>RAM:</span><span>${min.ram}</span></div>` : ''}
+                                ${min.gpu ? `<div class="req-item"><span>GPU:</span><span>${min.gpu}</span></div>` : ''}
+                                ${min.storage ? `<div class="req-item"><span>Dysk:</span><span>${min.storage}</span></div>` : ''}
+                            </div>` : ''}
+                            ${rec.os ? `
+                            <div class="req-section">
+                                <h4>Rekomendowane</h4>
+                                ${rec.os ? `<div class="req-item"><span>OS:</span><span>${rec.os}</span></div>` : ''}
+                                ${rec.cpu ? `<div class="req-item"><span>CPU:</span><span>${rec.cpu}</span></div>` : ''}
+                                ${rec.ram ? `<div class="req-item"><span>RAM:</span><span>${rec.ram}</span></div>` : ''}
+                                ${rec.gpu ? `<div class="req-item"><span>GPU:</span><span>${rec.gpu}</span></div>` : ''}
+                                ${rec.storage ? `<div class="req-item"><span>Dysk:</span><span>${rec.storage}</span></div>` : ''}
+                            </div>` : ''}
+                        </details>
+                    `;
+                }
+
+                // Status kompatybilności
+                let compatBadge = '';
+                if (userPC) {
+                    if (compat.compatible) {
+                        compatBadge = '<span class="badge" style="background: #00ff88; color: #000;">✓ Działa</span>';
+                    } else {
+                        compatBadge = `<span class="badge" style="background: #ff3366; color: #fff;" title="${compat.reason}">✖ ${compat.reason}</span>`;
+                    }
+                }
                 
                 const card = document.createElement('div');
                 card.className = 'game-card';
@@ -688,17 +918,23 @@
                     <div class="game-header" style="background: ${game.color || '#00d4ff'}20;">
                         <span>${game.icon || '🎮'}</span>
                         <span class="game-pegi">PEGI ${game.pegi || 12}</span>
+                        <span class="game-size">💾 ${size}</span>
                     </div>
                     <div class="game-body">
-                        <div class="game-title">${game.name}</div>
+                        <div class="game-title">${game.name} ${compatBadge}</div>
                         <div class="game-dev">${game.developer || 'Unknown'}</div>
                         <div style="margin-bottom: 10px;">
                             ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
                         </div>
                         <div class="game-desc">${game.description || 'Brak opisu'}</div>
+                        ${reqHtml}
                         <div class="game-actions">
                             <button class="btn btn-primary" onclick="editGame('${game.id}')">✏️ Edytuj</button>
-                            <button class="btn btn-danger" onclick="deleteGame('${game.id}')">🗑️ Usuń</button>
+                            ${compat.compatible ? 
+                                `<button class="btn btn-success" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
+                                `<button class="btn btn-success" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
+                            }
+                            <button class="btn btn-danger" onclick="deleteGame('${game.id}')">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -706,16 +942,20 @@
             });
         }
 
+        function downloadGame(gameId) {
+            const game = games.find(g => g.id === gameId);
+            if (!game || !game.download_url) {
+                showToast('Brak linku do pobrania!', 'error');
+                return;
+            }
+            window.open(game.download_url, '_blank');
+        }
+
         function filterGames() {
             renderGames();
         }
 
         function openModal(id = null) {
-            if (!currentGuildId) {
-                showToast('Najpierw wybierz serwer Discord!', 'error');
-                return;
-            }
-
             editingId = id;
             document.getElementById('modal').style.display = 'flex';
             document.getElementById('modalTitle').textContent = id ? 'Edytuj Grę' : 'Dodaj Nową Grę';
@@ -731,6 +971,25 @@
                     document.getElementById('inputColor').value = game.color || '#00d4ff';
                     document.getElementById('inputUrl').value = game.download_url || '';
                     document.getElementById('inputDesc').value = game.description || '';
+                    document.getElementById('inputSize').value = game.size || '';
+                    
+                    // Wymagania
+                    if (game.requirements) {
+                        const min = game.requirements.min || {};
+                        const rec = game.requirements.rec || {};
+                        
+                        document.getElementById('reqMinOs').value = min.os || '';
+                        document.getElementById('reqMinCpu').value = min.cpu || '';
+                        document.getElementById('reqMinRam').value = min.ram || '';
+                        document.getElementById('reqMinGpu').value = min.gpu || '';
+                        document.getElementById('reqMinStorage').value = min.storage || '';
+                        
+                        document.getElementById('reqRecOs').value = rec.os || '';
+                        document.getElementById('reqRecCpu').value = rec.cpu || '';
+                        document.getElementById('reqRecRam').value = rec.ram || '';
+                        document.getElementById('reqRecGpu').value = rec.gpu || '';
+                        document.getElementById('reqRecStorage').value = rec.storage || '';
+                    }
                 }
             } else {
                 document.getElementById('gameForm').reset();
@@ -754,7 +1013,24 @@
                 icon: document.getElementById('inputIcon').value || '🎮',
                 color: document.getElementById('inputColor').value,
                 download_url: document.getElementById('inputUrl').value || null,
-                description: document.getElementById('inputDesc').value
+                description: document.getElementById('inputDesc').value,
+                size: parseFloat(document.getElementById('inputSize').value) || null,
+                requirements: {
+                    min: {
+                        os: document.getElementById('reqMinOs').value,
+                        cpu: document.getElementById('reqMinCpu').value,
+                        ram: document.getElementById('reqMinRam').value,
+                        gpu: document.getElementById('reqMinGpu').value,
+                        storage: document.getElementById('reqMinStorage').value
+                    },
+                    rec: {
+                        os: document.getElementById('reqRecOs').value,
+                        cpu: document.getElementById('reqRecCpu').value,
+                        ram: document.getElementById('reqRecRam').value,
+                        gpu: document.getElementById('reqRecGpu').value,
+                        storage: document.getElementById('reqRecStorage').value
+                    }
+                }
             };
             
             const success = await saveGameToServer(gameData);
@@ -787,6 +1063,13 @@
         document.getElementById('modal').addEventListener('click', (e) => {
             if (e.target.id === 'modal') closeModal();
         });
+
+        // Załaduj zapisany config przy starcie
+        const savedConfig = localStorage.getItem('userPCConfig');
+        if (savedConfig) {
+            userPC = JSON.parse(savedConfig);
+            showCompatPanel();
+        }
     </script>
 </body>
 </html>
