@@ -39,7 +39,7 @@ let storageCategory = null;
 let notificationChannel = null;
 let gamesChannel = null;
 const userChannelsCache = new Map();
-let gamesCache = []; // ZAWSZE tablica!
+let gamesCache = [];
 
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
@@ -431,19 +431,17 @@ async function saveChatFile(user1, user2, data) {
     });
 }
 
-// === GAMES - POPRAWIONE ===
+// === GAMES ===
 async function syncGamesFromDiscord() {
     if (!discordReady) return;
     try {
         const loaded = await loadGlobalFile('games.json', []);
         
-        // 🔧 KLUCZOWA POPRAWKA: Upewnij się że to zawsze tablica
         if (Array.isArray(loaded)) {
             gamesCache = loaded;
         } else if (loaded && loaded.games && Array.isArray(loaded.games)) {
             gamesCache = loaded.games;
         } else if (loaded && typeof loaded === 'object') {
-            // Jeśli to obiekt, przekonwertuj na tablicę wartości
             gamesCache = Object.values(loaded);
         } else {
             gamesCache = [];
@@ -457,7 +455,6 @@ async function syncGamesFromDiscord() {
 }
 
 async function saveGame(gameId, gameData) {
-    // Upewnij się że gamesCache jest tablicą
     if (!Array.isArray(gamesCache)) {
         gamesCache = [];
     }
@@ -513,12 +510,24 @@ app.get('/games/:id', async (req, res) => {
     res.json(game);
 });
 
+// NOWY ENDPOINT - pobierz URL do pobrania gry
+app.get('/games/:id/download', requireDiscordForWrite, async (req, res) => {
+    const game = gamesCache.find(g => g.id === req.params.id);
+    if (!game) return res.status(404).json({ error: 'Nie ma takiej gry' });
+    
+    if (!game.download_url) {
+        return res.status(404).json({ error: 'Brak URL do pobrania' });
+    }
+    
+    res.json({ url: game.download_url });
+});
+
 app.post('/api/games', requireDiscordForWrite, async (req, res) => {
     try {
         const { 
             name, description, developer, price, icon, color, pegi, download_url,
-            size, // Rozmiar w GB
-            requirements // Wymagania systemowe
+            size,
+            requirements
         } = req.body;
         
         if (!name) return res.status(400).json({ error: 'Nazwa wymagana' });
@@ -533,7 +542,7 @@ app.post('/api/games', requireDiscordForWrite, async (req, res) => {
             color: color || '#00d4ff',
             pegi: pegi || 12,
             download_url: download_url || null,
-            size: size || null, // np. 15.5 (GB)
+            size: size || null,
             requirements: requirements || {
                 min: {
                     os: '',
@@ -739,6 +748,27 @@ app.post('/api/friends/respond', requireDiscordForWrite, async (req, res) => {
     res.json({ success: true, accepted: accept });
 });
 
+// NOWY ENDPOINT - usuwanie znajomego
+app.delete('/api/friends/remove', requireDiscordForWrite, async (req, res) => {
+    try {
+        const { username, friendName } = req.body;
+        
+        const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
+        const friendData = await loadUserFile(friendName, 'friends.json', { friends: [], pending: [] });
+        
+        userData.friends = userData.friends.filter(f => f !== friendName);
+        friendData.friends = friendData.friends.filter(f => f !== username);
+        
+        await saveUserFile(username, 'friends.json', userData, '👥 Znajomi');
+        await saveUserFile(friendName, 'friends.json', friendData, '👥 Znajomi');
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Błąd DELETE /api/friends/remove:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // === CZAT ===
 app.get('/api/chat/:user1/:user2', requireDiscordForWrite, async (req, res) => {
     const data = await loadChatFile(req.params.user1, req.params.user2);
@@ -777,6 +807,28 @@ app.get('/api/users/:username/library', requireDiscordForWrite, async (req, res)
     res.json(enriched);
 });
 
+// NOWY ENDPOINT - pobierz konkretną grę z biblioteki
+app.get('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
+    try {
+        const { username, gameId } = req.params;
+        const lib = await loadUserFile(username, 'library.json', { games: [] });
+        
+        const gameEntry = lib.games.find(g => g.gameId === gameId);
+        if (!gameEntry) {
+            return res.status(404).json({ error: 'Gra nie znaleziona w bibliotece' });
+        }
+        
+        const gameDetails = gamesCache.find(gc => gc.id === gameId);
+        res.json({
+            ...gameEntry,
+            gameDetails: gameDetails || null
+        });
+    } catch (error) {
+        console.error('❌ Błąd GET /api/users/:username/library/:gameId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/users/:username/library', requireDiscordForWrite, async (req, res) => {
     const { gameId } = req.body;
     if (!gamesCache.find(g => g.id === gameId)) {
@@ -796,3 +848,75 @@ app.post('/api/users/:username/library', requireDiscordForWrite, async (req, res
     
     res.json({ success: true, library: lib.games });
 });
+
+// NOWY ENDPOINT - aktualizuj status instalacji gry
+app.put('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
+    try {
+        const { username, gameId } = req.params;
+        const { installed, installPath } = req.body;
+        
+        const lib = await loadUserFile(username, 'library.json', { games: [] });
+        const gameEntry = lib.games.find(g => g.gameId === gameId);
+        
+        if (!gameEntry) {
+            return res.status(404).json({ error: 'Gra nie znaleziona w bibliotece' });
+        }
+        
+        gameEntry.installed = installed;
+        if (installPath !== undefined) {
+            gameEntry.installPath = installPath;
+        }
+        gameEntry.updatedAt = new Date().toISOString();
+        
+        await saveUserFile(username, 'library.json', lib, '📚 Biblioteka');
+        res.json({ success: true, game: gameEntry });
+    } catch (error) {
+        console.error('❌ Błąd PUT /api/users/:username/library/:gameId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// NOWY ENDPOINT - usuń grę z biblioteki
+app.delete('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
+    try {
+        const { username, gameId } = req.params;
+        const lib = await loadUserFile(username, 'library.json', { games: [] });
+        
+        const initialLength = lib.games.length;
+        lib.games = lib.games.filter(g => g.gameId !== gameId);
+        
+        if (lib.games.length === initialLength) {
+            return res.status(404).json({ error: 'Gra nie znaleziona w bibliotece' });
+        }
+        
+        await saveUserFile(username, 'library.json', lib, '📚 Biblioteka');
+        res.json({ success: true, message: 'Gra usunięta z biblioteki' });
+    } catch (error) {
+        console.error('❌ Błąd DELETE /api/users/:username/library/:gameId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+console.log('📋 Zarejestrowane endpointy:');
+console.log('  GET  /health');
+console.log('  GET  /admin.html');
+console.log('  GET  /games');
+console.log('  GET  /games/:id');
+console.log('  GET  /games/:id/download');
+console.log('  POST /api/games');
+console.log('  PUT  /api/games/:id');
+console.log('  DELETE /api/games/:id');
+console.log('  POST /api/auth/register');
+console.log('  POST /api/auth/login');
+console.log('  GET  /api/auth/verify');
+console.log('  GET  /api/friends/:username');
+console.log('  POST /api/friends/add');
+console.log('  POST /api/friends/respond');
+console.log('  DELETE /api/friends/remove');
+console.log('  GET  /api/chat/:user1/:user2');
+console.log('  POST /api/chat/send');
+console.log('  GET  /api/users/:username/library');
+console.log('  GET  /api/users/:username/library/:gameId');
+console.log('  POST /api/users/:username/library');
+console.log('  PUT  /api/users/:username/library/:gameId');
+console.log('  DELETE /api/users/:username/library/:gameId');
