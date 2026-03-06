@@ -43,6 +43,10 @@ let gamesCache = [];
 
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
+// === CACHE DLA POWIADOMIEŃ O ZAPROSZENIACH ===
+// Przechowuje informacje o użytkownikach z oczekującymi zaproszeniami
+const pendingInvitesCache = new Map();
+
 // === START SERWERA HTTP ===
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
@@ -62,13 +66,63 @@ app.get('/admin.html', async (req, res) => {
     }
 });
 
-// Health check
-app.get('/health', (req, res) => {
-    res.json({
+// Health check - ROZSZERZONY O INFO O ZAPROSZENIACH
+app.get('/health', async (req, res) => {
+    const username = req.query.username; // Opcjonalny parametr do sprawdzenia konkretnego użytkownika
+    
+    const response = {
         status: discordReady ? 'OK' : 'INITIALIZING',
         discord: discordReady,
         timestamp: new Date().toISOString()
-    });
+    };
+
+    // Jeśli podano username, sprawdź czy ma oczekujące zaproszenia
+    if (username && discordReady) {
+        try {
+            const hasPending = await checkUserPendingInvites(username);
+            response.hasPendingInvites = hasPending;
+            response.pendingInvitesCount = await getPendingInvitesCount(username);
+        } catch (error) {
+            console.error(`Błąd sprawdzania zaproszeń dla ${username}:`, error);
+        }
+    }
+    
+    res.json(response);
+});
+
+// NOWY ENDPOINT - sprawdź czy użytkownik ma oczekujące zaproszenia
+app.get('/api/friends/:username/has-pending', requireDiscordForWrite, async (req, res) => {
+    try {
+        const username = req.params.username;
+        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
+        
+        // Konwersja starego formatu
+        if (data.pending && !data.pendingInvites) {
+            data.pendingInvites = data.pending.map(p => ({
+                from: p.from,
+                timestamp: p.at || new Date().toISOString()
+            }));
+        }
+        
+        const pendingInvites = data.pendingInvites || data.pending || [];
+        const hasPending = pendingInvites.length > 0;
+        
+        // Aktualizuj cache
+        if (hasPending) {
+            pendingInvitesCache.set(username, pendingInvites.length);
+        } else {
+            pendingInvitesCache.delete(username);
+        }
+        
+        res.json({
+            hasPendingInvites: hasPending,
+            count: pendingInvites.length,
+            invites: pendingInvites
+        });
+    } catch (error) {
+        console.error('❌ Błąd sprawdzania zaproszeń:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.get('/', (req, res) => {
@@ -87,6 +141,46 @@ function requireDiscordForWrite(req, res, next) {
         });
     }
     next();
+}
+
+// === FUNKCJE POMOCNICZE DLA POWIADOMIEŃ ===
+
+async function checkUserPendingInvites(username) {
+    try {
+        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
+        
+        // Obsługa obu formatów (stary i nowy)
+        const pending = data.pendingInvites || data.pending || [];
+        return pending.length > 0;
+    } catch (error) {
+        return false;
+    }
+}
+
+async function getPendingInvitesCount(username) {
+    try {
+        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
+        const pending = data.pendingInvites || data.pending || [];
+        return pending.length;
+    } catch (error) {
+        return 0;
+    }
+}
+
+// Funkcja aktualizująca cache zaproszeń (wywoływana przy każdej zmianie)
+async function updatePendingInvitesCache(username) {
+    try {
+        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
+        const pending = data.pendingInvites || data.pending || [];
+        
+        if (pending.length > 0) {
+            pendingInvitesCache.set(username, pending.length);
+        } else {
+            pendingInvitesCache.delete(username);
+        }
+    } catch (error) {
+        console.error(`Błąd aktualizacji cache dla ${username}:`, error);
+    }
 }
 
 // === INICJALIZACJA DISCORDA ===
@@ -109,6 +203,9 @@ async function initDiscord() {
                 discordReady = true;
                 console.log('✅ Discord gotowy!');
                 
+                // Uruchom okresowe sprawdzanie zaproszeń
+                setInterval(periodicPendingCheck, 30000); // Co 30 sekund
+                
                 setInterval(syncGamesFromDiscord, 300000);
                 
             } catch (error) {
@@ -120,6 +217,15 @@ async function initDiscord() {
         
     } catch (error) {
         console.error('❌ Błąd Discord:', error);
+    }
+}
+
+// Okresowe sprawdzanie zaproszeń dla wszystkich aktywnych użytkowników
+async function periodicPendingCheck() {
+    if (!discordReady) return;
+    
+    for (const username of pendingInvitesCache.keys()) {
+        await updatePendingInvitesCache(username);
     }
 }
 
@@ -667,10 +773,18 @@ app.post('/api/auth/login', requireDiscordForWrite, async (req, res) => {
         user.lastLogin = new Date().toISOString();
         await saveGlobalFile('users.json', users, '👥 Użytkownicy');
         
+        // Sprawdź czy ma oczekujące zaproszenia przy logowaniu
+        const hasPending = await checkUserPendingInvites(username);
+        
         res.json({ 
             success: true, 
             token, 
-            user: { id: user.id, username: user.username, email: user.email }
+            user: { 
+                id: user.id, 
+                username: user.username, 
+                email: user.email,
+                hasPendingInvites: hasPending
+            }
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -689,63 +803,150 @@ app.get('/api/auth/verify', requireDiscordForWrite, async (req, res) => {
     
     if (!user) return res.status(401).json({ error: 'Nieprawidłowy token' });
     
-    res.json({ valid: true, userId: user.id, username: user.username });
+    // Sprawdź czy ma oczekujące zaproszenia
+    const hasPending = await checkUserPendingInvites(user.username);
+    
+    res.json({ 
+        valid: true, 
+        userId: user.id, 
+        username: user.username,
+        hasPendingInvites: hasPending
+    });
 });
 
-// === ZNAJOMI ===
+// === ZNAJOMI - POPRAWIONE ===
 app.get('/api/friends/:username', requireDiscordForWrite, async (req, res) => {
-    const data = await loadUserFile(req.params.username, 'friends.json', { friends: [], pending: [] });
-    const users = await loadGlobalFile('users.json', {});
-    
-    const friends = await Promise.all(
-        data.friends.map(async (name) => ({
-            username: name,
-            status: 'online',
-            lastSeen: users[name]?.lastLogin
-        }))
-    );
-    
-    res.json({ friends, pending: data.pending || [] });
+    try {
+        const data = await loadUserFile(req.params.username, 'friends.json', { friends: [], pending: [] });
+        const users = await loadGlobalFile('users.json', {});
+        
+        // Konwersja starego formatu na nowy
+        if (data.pending && !data.pendingInvites) {
+            data.pendingInvites = data.pending.map(p => ({
+                from: p.from,
+                timestamp: p.at || new Date().toISOString()
+            }));
+        }
+        
+        const friends = await Promise.all(
+            (data.friends || []).map(async (name) => ({
+                username: name,
+                status: 'online',
+                lastSeen: users[name]?.lastLogin
+            }))
+        );
+        
+        const pendingInvites = (data.pendingInvites || data.pending || []).map(p => ({
+            from: p.from,
+            timestamp: p.timestamp || p.at || new Date().toISOString()
+        }));
+        
+        // Aktualizuj cache
+        if (pendingInvites.length > 0) {
+            pendingInvitesCache.set(req.params.username, pendingInvites.length);
+        }
+        
+        res.json({ 
+            friends, 
+            pendingInvites: pendingInvites 
+        });
+    } catch (error) {
+        console.error('❌ Błąd GET /api/friends/:username:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.post('/api/friends/add', requireDiscordForWrite, async (req, res) => {
-    const { fromUser, toUser } = req.body;
-    const users = await loadGlobalFile('users.json', {});
-    
-    if (!users[toUser]) return res.status(404).json({ error: 'Nie ma takiego użytkownika' });
-    
-    const toData = await loadUserFile(toUser, 'friends.json', { friends: [], pending: [] });
-    if (!toData.pending) toData.pending = [];
-    
-    if (!toData.pending.find(p => p.from === fromUser) && !toData.friends.includes(fromUser)) {
-        toData.pending.push({ from: fromUser, at: new Date().toISOString() });
-        await saveUserFile(toUser, 'friends.json', toData, '👥 Znajomi');
+    try {
+        const { fromUser, toUser } = req.body;
+        const users = await loadGlobalFile('users.json', {});
+        
+        if (!users[toUser]) return res.status(404).json({ error: 'Nie ma takiego użytkownika' });
+        
+        const toData = await loadUserFile(toUser, 'friends.json', { friends: [], pending: [] });
+        
+        // Konwersja starego formatu
+        if (toData.pending && !toData.pendingInvites) {
+            toData.pendingInvites = toData.pending.map(p => ({
+                from: p.from,
+                timestamp: p.at || new Date().toISOString()
+            }));
+            delete toData.pending;
+        }
+        
+        if (!toData.pendingInvites) toData.pendingInvites = [];
+        
+        // Sprawdź czy już nie ma zaproszenia lub nie są znajomymi
+        const alreadyPending = toData.pendingInvites.find(p => p.from === fromUser);
+        const alreadyFriends = (toData.friends || []).includes(fromUser);
+        
+        if (!alreadyPending && !alreadyFriends) {
+            toData.pendingInvites.push({ 
+                from: fromUser, 
+                timestamp: new Date().toISOString() 
+            });
+            await saveUserFile(toUser, 'friends.json', toData, '👥 Znajomi');
+            
+            // Dodaj do cache powiadomień
+            pendingInvitesCache.set(toUser, toData.pendingInvites.length);
+        }
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Błąd POST /api/friends/add:', error);
+        res.status(500).json({ error: error.message });
     }
-    
-    res.json({ success: true });
 });
 
 app.post('/api/friends/respond', requireDiscordForWrite, async (req, res) => {
-    const { username, fromUser, accept } = req.body;
-    
-    const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
-    const fromData = await loadUserFile(fromUser, 'friends.json', { friends: [], pending: [] });
-    
-    userData.pending = userData.pending.filter(p => p.from !== fromUser);
-    
-    if (accept) {
-        userData.friends.push(fromUser);
-        fromData.friends.push(username);
-        await saveChatFile(username, fromUser, {
-            participants: [username, fromUser],
-            messages: []
-        });
+    try {
+        const { username, fromUser, accept } = req.body;
+        
+        const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
+        const fromData = await loadUserFile(fromUser, 'friends.json', { friends: [], pending: [] });
+        
+        // Konwersja starego formatu
+        if (userData.pending && !userData.pendingInvites) {
+            userData.pendingInvites = userData.pending.map(p => ({
+                from: p.from,
+                timestamp: p.at || new Date().toISOString()
+            }));
+            delete userData.pending;
+        }
+        
+        // Usuń z pendingInvites
+        userData.pendingInvites = (userData.pendingInvites || []).filter(p => p.from !== fromUser);
+        
+        if (accept) {
+            // Dodaj do znajomych obu stron
+            if (!userData.friends) userData.friends = [];
+            if (!fromData.friends) fromData.friends = [];
+            
+            if (!userData.friends.includes(fromUser)) {
+                userData.friends.push(fromUser);
+            }
+            if (!fromData.friends.includes(username)) {
+                fromData.friends.push(username);
+            }
+            
+            // Utwórz kanał czatu
+            await saveChatFile(username, fromUser, {
+                participants: [username, fromUser],
+                messages: []
+            });
+        }
+        
+        await saveUserFile(username, 'friends.json', userData, '👥 Znajomi');
+        await saveUserFile(fromUser, 'friends.json', fromData, '👥 Znajomi');
+        
+        // Aktualizuj cache
+        await updatePendingInvitesCache(username);
+        
+        res.json({ success: true, accepted: accept });
+    } catch (error) {
+        console.error('❌ Błąd POST /api/friends/respond:', error);
+        res.status(500).json({ error: error.message });
     }
-    
-    await saveUserFile(username, 'friends.json', userData, '👥 Znajomi');
-    await saveUserFile(fromUser, 'friends.json', fromData, '👥 Znajomi');
-    
-    res.json({ success: true, accepted: accept });
 });
 
 // NOWY ENDPOINT - usuwanie znajomego
@@ -756,8 +957,8 @@ app.delete('/api/friends/remove', requireDiscordForWrite, async (req, res) => {
         const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
         const friendData = await loadUserFile(friendName, 'friends.json', { friends: [], pending: [] });
         
-        userData.friends = userData.friends.filter(f => f !== friendName);
-        friendData.friends = friendData.friends.filter(f => f !== username);
+        userData.friends = (userData.friends || []).filter(f => f !== friendName);
+        friendData.friends = (friendData.friends || []).filter(f => f !== username);
         
         await saveUserFile(username, 'friends.json', userData, '👥 Znajomi');
         await saveUserFile(friendName, 'friends.json', friendData, '👥 Znajomi');
@@ -910,6 +1111,7 @@ console.log('  POST /api/auth/register');
 console.log('  POST /api/auth/login');
 console.log('  GET  /api/auth/verify');
 console.log('  GET  /api/friends/:username');
+console.log('  GET  /api/friends/:username/has-pending  <-- NOWY');
 console.log('  POST /api/friends/add');
 console.log('  POST /api/friends/respond');
 console.log('  DELETE /api/friends/remove');
