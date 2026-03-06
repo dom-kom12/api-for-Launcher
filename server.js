@@ -3,6 +3,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
+const http = require('http');
 const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 
 const app = express();
@@ -15,6 +16,10 @@ const STORAGE_CATEGORY_ID = process.env.STORAGE_CATEGORY_ID || '1477579473611128
 const NOTIFICATION_CHANNEL_ID = process.env.NOTIFICATION_CHANNEL_ID || '1477577363285082123';
 const GAMES_CHANNEL_ID = process.env.GAMES_CHANNEL_ID;
 
+// WAŻNE: URL do self-pingu (dla Replit/UptimeRobot)
+const SELF_PING_URL = process.env.SELF_PING_URL || `http://0.0.0.0:${PORT}/health`;
+const PING_INTERVAL = 2 * 60 * 1000; // Co 2 minuty
+
 if (!DISCORD_TOKEN) {
     console.error('❌ Brak DISCORD_TOKEN! Ustaw w zmiennych środowiskowych.');
     process.exit(1);
@@ -24,24 +29,22 @@ if (!DISCORD_TOKEN) {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// Discord Client - KONFIGURACJA KEEP-ALIVE
+// Discord Client
 const discordClient = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers // Dodane dla lepszej stabilności
+        GatewayIntentBits.GuildMembers
     ],
-    // WAŻNE: Zapobiega rozłączaniu przez timeout
     rest: {
         timeout: 60000,
         retries: 3,
         interval: 3500
     },
-    // WAŻNE: Utrzymanie połączenia
     ws: {
         large_threshold: 250,
-        compress: false // Wyłączone dla stabilności
+        compress: false
     }
 });
 
@@ -52,23 +55,45 @@ let notificationChannel = null;
 let gamesChannel = null;
 const userChannelsCache = new Map();
 let gamesCache = [];
+let isShuttingDown = false;
 
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// === CACHE DLA POWIADOMIEŃ O ZAPROSZENIACH ===
+// === CACHE DLA POWIADOMIEŃ ===
 const pendingInvitesCache = new Map();
 
 // === START SERWERA HTTP ===
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
     console.log(`📡 Admin panel: http://localhost:${PORT}/admin.html`);
+    console.log(`🔄 Self-ping co ${PING_INTERVAL/1000}s: ${SELF_PING_URL}`);
+    
+    // URUCHOM SELF-PINGER po starcie serwera
+    startSelfPinger();
 });
 
-// WAŻNE: Utrzymanie połączenia HTTP (keep-alive)
-server.keepAliveTimeout = 120000; // 2 minuty
-server.headersTimeout = 120000; // 2 minuty
+// WAŻNE: Długie timeouty dla keep-alive
+server.keepAliveTimeout = 120000;
+server.headersTimeout = 120000;
 
-// === ENDPOINT /admin.html ===
+// === SELF-PINGER - UTWZYMANIE PRZY ŻYCIU ===
+function startSelfPinger() {
+    setInterval(async () => {
+        if (isShuttingDown) return;
+        
+        try {
+            const response = await fetch(SELF_PING_URL);
+            const data = await response.json();
+            console.log(`🔄 Self-ping OK | Status: ${data.status} | Uptime: ${Math.floor(data.uptime/60)}min`);
+        } catch (error) {
+            console.error('❌ Self-ping failed:', error.message);
+            // Nie wyłączaj - spróbuj ponownie za 2 minuty
+        }
+    }, PING_INTERVAL);
+}
+
+// === ENDPOINTY ===
+
 app.get('/admin.html', async (req, res) => {
     try {
         const adminPath = path.join(__dirname, 'admin.html');
@@ -76,12 +101,11 @@ app.get('/admin.html', async (req, res) => {
         res.setHeader('Content-Type', 'text/html');
         res.send(html);
     } catch (error) {
-        console.error('❌ Błąd wczytywania admin.html:', error);
         res.status(500).send(`Błąd: ${error.message}`);
     }
 });
 
-// Health check - ROZSZERZONY O INFO O ZAPROSZENIACH
+// Health check - DODANO uptime i memory
 app.get('/health', async (req, res) => {
     const username = req.query.username;
     
@@ -89,7 +113,9 @@ app.get('/health', async (req, res) => {
         status: discordReady ? 'OK' : 'INITIALIZING',
         discord: discordReady,
         timestamp: new Date().toISOString(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        pid: process.pid
     };
 
     if (username && discordReady) {
@@ -98,14 +124,13 @@ app.get('/health', async (req, res) => {
             response.hasPendingInvites = hasPending;
             response.pendingInvitesCount = await getPendingInvitesCount(username);
         } catch (error) {
-            console.error(`Błąd sprawdzania zaproszeń dla ${username}:`, error);
+            console.error(`Błąd sprawdzania zaproszeń:`, error);
         }
     }
     
     res.json(response);
 });
 
-// NOWY ENDPOINT - sprawdź czy użytkownik ma oczekujące zaproszenia
 app.get('/api/friends/:username/has-pending', requireDiscordForWrite, async (req, res) => {
     try {
         const username = req.params.username;
@@ -133,7 +158,6 @@ app.get('/api/friends/:username/has-pending', requireDiscordForWrite, async (req
             invites: pendingInvites
         });
     } catch (error) {
-        console.error('❌ Błąd sprawdzania zaproszeń:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -142,7 +166,7 @@ app.get('/', (req, res) => {
     res.json({ 
         message: 'Nebula Game Server',
         status: discordReady ? 'online' : 'booting',
-        endpoints: ['/health', '/admin.html', '/games', '/api/games']
+        uptime: process.uptime()
     });
 });
 
@@ -156,14 +180,14 @@ function requireDiscordForWrite(req, res, next) {
     next();
 }
 
-// === FUNKCJE POMOCNICZE DLA POWIADOMIEŃ ===
+// === FUNKCJE POMOCNICZE ===
 
 async function checkUserPendingInvites(username) {
     try {
         const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
         const pending = data.pendingInvites || data.pending || [];
         return pending.length > 0;
-    } catch (error) {
+    } catch {
         return false;
     }
 }
@@ -173,7 +197,7 @@ async function getPendingInvitesCount(username) {
         const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
         const pending = data.pendingInvites || data.pending || [];
         return pending.length;
-    } catch (error) {
+    } catch {
         return 0;
     }
 }
@@ -189,7 +213,7 @@ async function updatePendingInvitesCache(username) {
             pendingInvitesCache.delete(username);
         }
     } catch (error) {
-        console.error(`Błąd aktualizacji cache dla ${username}:`, error);
+        console.error(`Błąd cache:`, error);
     }
 }
 
@@ -198,38 +222,23 @@ async function initDiscord() {
     try {
         console.log('🔌 Łączenie z Discordem...');
         
-        // WAŻNE: Obsługa błędów połączenia
+        // Obsługa błędów
         discordClient.on('error', (error) => {
-            console.error('❌ Discord Client Error:', error);
-            // Nie wyłączaj procesu - spróbuj ponownie połączyć
+            console.error('❌ Discord Error:', error.message);
         });
 
         discordClient.on('disconnect', (event) => {
-            console.log('⚠️ Discord rozłączony:', event.code, event.reason);
+            console.log('⚠️ Discord disconnect:', event.code);
             discordReady = false;
-            // Automatyczne ponowne połączenie jest obsługiwane przez discord.js
         });
 
         discordClient.on('reconnecting', () => {
-            console.log('🔄 Ponowne łączenie z Discordem...');
+            console.log('🔄 Reconnecting...');
         });
 
-        discordClient.on('resume', (replayed) => {
-            console.log('✅ Połączenie wznowione, replayed events:', replayed);
+        discordClient.on('resume', () => {
+            console.log('✅ Resumed');
             discordReady = true;
-        });
-
-        // WAŻNE: Heartbeat keepalive
-        discordClient.on('shardReady', (shardId) => {
-            console.log(`✅ Shard ${shardId} gotowy`);
-        });
-
-        discordClient.on('shardDisconnect', (event, shardId) => {
-            console.log(`⚠️ Shard ${shardId} rozłączony`);
-        });
-
-        discordClient.on('shardReconnecting', (shardId) => {
-            console.log(`🔄 Shard ${shardId} łączy ponownie...`);
         });
 
         discordClient.once('ready', async () => {
@@ -245,59 +254,37 @@ async function initDiscord() {
                 await syncGamesFromDiscord();
                 
                 discordReady = true;
-                console.log('✅ Discord gotowy!');
+                console.log('✅ Discord ready!');
                 
-                // WAŻNE: Heartbeat interval dla utrzymania połączenia
+                // Heartbeat co 30s
                 setInterval(() => {
-                    if (discordClient.ws.ping === -1) {
-                        console.log('⚠️ WebSocket ping -1, możliwe problemy z połączeniem');
-                    } else {
-                        console.log(`💓 Heartbeat ping: ${discordClient.ws.ping}ms`);
-                    }
-                }, 30000); // Co 30 sekund loguj ping
+                    const ping = discordClient.ws.ping;
+                    console.log(`💓 Ping: ${ping}ms | Ready: ${discordReady}`);
+                }, 30000);
                 
-                // Sprawdzanie zaproszeń
+                // Sprawdzanie zaproszeń co 30s
                 setInterval(periodicPendingCheck, 30000);
                 
-                // Sync gier
+                // Sync gier co 5min
                 setInterval(syncGamesFromDiscord, 300000);
                 
             } catch (error) {
-                console.error('❌ Błąd inicjalizacji:', error);
+                console.error('❌ Init error:', error);
             }
         });
         
-        // WAŻNE: Opcje logowania z retry
         await discordClient.login(DISCORD_TOKEN);
         
-        // WAŻNE: Utrzymanie procesu przy błędach
-        process.on('unhandledRejection', (error) => {
-            console.error('⚠️ Unhandled Rejection:', error);
-            // Nie wyłączaj procesu
-        });
-
-        process.on('uncaughtException', (error) => {
-            console.error('⚠️ Uncaught Exception:', error);
-            // Nie wyłączaj procesu - zaloguj i kontynuuj
-        });
-        
     } catch (error) {
-        console.error('❌ Błąd Discord:', error);
-        // WAŻNE: Ponowna próba połączenia po błędzie
+        console.error('❌ Discord login failed:', error);
         setTimeout(initDiscord, 10000);
     }
 }
 
-// Okresowe sprawdzanie zaproszeń dla wszystkich aktywnych użytkowników
 async function periodicPendingCheck() {
     if (!discordReady) return;
-    
-    try {
-        for (const username of pendingInvitesCache.keys()) {
-            await updatePendingInvitesCache(username);
-        }
-    } catch (error) {
-        console.error('Błąd periodicPendingCheck:', error);
+    for (const username of pendingInvitesCache.keys()) {
+        await updatePendingInvitesCache(username);
     }
 }
 
@@ -306,10 +293,10 @@ async function initGamesChannel() {
         if (GAMES_CHANNEL_ID) {
             try {
                 gamesChannel = await guild.channels.fetch(GAMES_CHANNEL_ID);
-                console.log(`📁 Używam kanału: ${gamesChannel.name}`);
+                console.log(`📁 Games channel: ${gamesChannel.name}`);
                 return;
             } catch (e) {
-                console.log('⚠️ Nie znaleziono kanału z ID, tworzę nowy...');
+                console.log('⚠️ Creating new games channel...');
             }
         }
 
@@ -324,28 +311,27 @@ async function initGamesChannel() {
                 name: 'games-json',
                 type: ChannelType.GuildText,
                 parent: storageCategory.id,
-                topic: '🎮 Automatycznie aktualizowany plik games.json',
+                topic: '🎮 games.json',
                 permissionOverwrites: [
                     { 
                         id: guild.id, 
                         deny: [PermissionFlagsBits.SendMessages],
-                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]
+                        allow: [PermissionFlagsBits.ViewChannel]
                     },
                     { 
                         id: discordClient.user.id, 
                         allow: [
                             PermissionFlagsBits.ViewChannel, 
                             PermissionFlagsBits.SendMessages, 
-                            PermissionFlagsBits.AttachFiles,
-                            PermissionFlagsBits.ManageMessages
+                            PermissionFlagsBits.AttachFiles
                         ] 
                     }
                 ]
             });
-            console.log(`✅ Utworzono kanał games-json`);
+            console.log(`✅ Created games-json`);
         }
     } catch (error) {
-        console.error('❌ Błąd kanału games.json:', error);
+        console.error('❌ Games channel error:', error);
     }
 }
 
@@ -377,42 +363,20 @@ async function uploadGamesJsonToDiscord() {
         }
 
         await gamesChannel.send({
-            content: `🎮 **Games.json** | Aktualizacja: <t:${Math.floor(Date.now()/1000)}:F> | Gier: ${gamesCache.length}`,
+            content: `🎮 Games.json | ${gamesCache.length} games | <t:${Math.floor(Date.now()/1000)}:F>`,
             files: [attachment]
         });
 
-        console.log(`📤 Wysłano games.json (${gamesCache.length} gier)`);
+        console.log(`📤 Uploaded games.json (${gamesCache.length} games)`);
         return true;
     } catch (error) {
-        console.error('❌ Błąd wysyłania games.json:', error);
+        console.error('❌ Upload error:', error);
         return false;
     }
 }
 
-// WAŻNE: Rozpocznij połączenie Discord
+// START
 initDiscord();
-
-// WAŻNE: Utrzymanie procesu Node.js przy życiu
-setInterval(() => {
-    // Pusty interval utrzymuje event loop przy życiu
-}, 60000);
-
-// WAŻNE: Obsługa sygnałów systemowych
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    server.close(() => {
-        discordClient.destroy();
-        process.exit(0);
-    });
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    server.close(() => {
-        discordClient.destroy();
-        process.exit(0);
-    });
-});
 
 // === FUNKCJE POMOCNICZE ===
 function hashPassword(password) {
@@ -428,11 +392,10 @@ async function sendDiscordNotification(embed) {
     try {
         await notificationChannel.send({ embeds: [embed] });
     } catch (error) {
-        console.error('❌ Powiadomienie:', error);
+        console.error('❌ Notification error:', error);
     }
 }
 
-// === ZARZĄDZANIE KANAŁAMI ===
 async function loadExistingUserChannels() {
     try {
         const channels = await guild.channels.fetch();
@@ -444,14 +407,14 @@ async function loadExistingUserChannels() {
             const username = channel.name.replace('user-', '').replace(/-/g, '_');
             userChannelsCache.set(username, id);
         }
-        console.log(`📁 ${userChannelsCache.size} kanałów użytkowników`);
+        console.log(`📁 ${userChannelsCache.size} user channels`);
     } catch (error) {
-        console.error('❌ Błąd kanałów:', error);
+        console.error('❌ Load channels error:', error);
     }
 }
 
 async function getOrCreateUserChannel(username) {
-    if (!discordReady) throw new Error('Discord niegotowy');
+    if (!discordReady) throw new Error('Discord not ready');
 
     if (userChannelsCache.has(username)) {
         try {
@@ -489,7 +452,6 @@ async function getOrCreateUserChannel(username) {
     return newChannel;
 }
 
-// === ZAPIS/WCZYT ===
 async function saveUserFile(username, filename, data, description = '') {
     const channel = await getOrCreateUserChannel(username);
     const buffer = Buffer.from(JSON.stringify(data, null, 2));
@@ -524,7 +486,6 @@ async function loadUserFile(username, filename, defaultData = {}) {
     }
 }
 
-// === GLOBAL FILES ===
 async function getGlobalChannel() {
     let ch = storageCategory.children.cache.find(c => c.name === 'global-data');
     if (!ch) {
@@ -565,14 +526,12 @@ async function loadGlobalFile(filename, defaultData = {}) {
         
         const attachment = msg.attachments.find(a => a.name === filename);
         const res = await fetch(attachment.url);
-        const data = await res.json();
-        return data;
+        return await res.json();
     } catch {
         return defaultData;
     }
 }
 
-// === CZAT ===
 async function getChatChannelName(user1, user2) {
     const sorted = [user1, user2].sort();
     return `chat-${sorted[0]}-and-${sorted[1]}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -632,7 +591,6 @@ async function saveChatFile(user1, user2, data) {
     });
 }
 
-// === GAMES ===
 async function syncGamesFromDiscord() {
     if (!discordReady) return;
     try {
@@ -648,17 +606,15 @@ async function syncGamesFromDiscord() {
             gamesCache = [];
         }
         
-        console.log(`🎮 Załadowano ${gamesCache.length} gier`);
+        console.log(`🎮 Loaded ${gamesCache.length} games`);
     } catch (error) {
-        console.error('❌ Sync gier:', error);
+        console.error('❌ Sync error:', error);
         gamesCache = [];
     }
 }
 
 async function saveGame(gameId, gameData) {
-    if (!Array.isArray(gamesCache)) {
-        gamesCache = [];
-    }
+    if (!Array.isArray(gamesCache)) gamesCache = [];
     
     const existingIndex = gamesCache.findIndex(g => g.id === gameId);
     const gameWithId = { 
@@ -673,7 +629,7 @@ async function saveGame(gameId, gameData) {
         gamesCache.push(gameWithId);
     }
     
-    await saveGlobalFile('games.json', gamesCache, '🎮 Biblioteka gier');
+    await saveGlobalFile('games.json', gamesCache, '🎮 Games');
     await uploadGamesJsonToDiscord();
     
     return gameWithId;
@@ -689,7 +645,7 @@ async function deleteGame(gameId) {
     gamesCache = gamesCache.filter(g => g.id !== gameId);
     
     if (gamesCache.length < initialLength) {
-        await saveGlobalFile('games.json', gamesCache, '🎮 Biblioteka gier');
+        await saveGlobalFile('games.json', gamesCache, '🎮 Games');
         await uploadGamesJsonToDiscord();
         return true;
     }
@@ -707,98 +663,58 @@ app.get('/games', async (req, res) => {
 
 app.get('/games/:id', async (req, res) => {
     const game = gamesCache.find(g => g.id === req.params.id);
-    if (!game) return res.status(404).json({ error: 'Nie ma takiej gry' });
+    if (!game) return res.status(404).json({ error: 'Game not found' });
     res.json(game);
 });
 
-// NOWY ENDPOINT - pobierz URL do pobrania gry
 app.get('/games/:id/download', requireDiscordForWrite, async (req, res) => {
     const game = gamesCache.find(g => g.id === req.params.id);
-    if (!game) return res.status(404).json({ error: 'Nie ma takiej gry' });
-    
-    if (!game.download_url) {
-        return res.status(404).json({ error: 'Brak URL do pobrania' });
-    }
-    
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (!game.download_url) return res.status(404).json({ error: 'No download URL' });
     res.json({ url: game.download_url });
 });
 
 app.post('/api/games', requireDiscordForWrite, async (req, res) => {
     try {
-        const { 
-            name, description, developer, price, icon, color, pegi, download_url,
-            size,
-            requirements
-        } = req.body;
-        
-        if (!name) return res.status(400).json({ error: 'Nazwa wymagana' });
+        const { name, description, developer, price, icon, color, pegi, download_url, size, requirements } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name required' });
         
         const gameId = crypto.randomUUID();
         const gameData = {
-            name,
-            description: description || '',
-            developer: developer || 'Unknown',
-            price: price || 0,
-            icon: icon || '🎮',
-            color: color || '#00d4ff',
-            pegi: pegi || 12,
-            download_url: download_url || null,
-            size: size || null,
-            requirements: requirements || {
-                min: {
-                    os: '',
-                    cpu: '',
-                    ram: '',
-                    gpu: '',
-                    storage: ''
-                },
-                rec: {
-                    os: '',
-                    cpu: '',
-                    ram: '',
-                    gpu: '',
-                    storage: ''
-                }
-            },
+            name, description: description || '', developer: developer || 'Unknown',
+            price: price || 0, icon: icon || '🎮', color: color || '#00d4ff',
+            pegi: pegi || 12, download_url: download_url || null, size: size || null,
+            requirements: requirements || { min: {}, rec: {} },
             createdAt: new Date().toISOString()
         };
         
         const saved = await saveGame(gameId, gameData);
         
         const embed = new EmbedBuilder()
-            .setTitle(price === 0 ? '🆓 Nowa darmowa gra!' : '💰 Nowa gra!')
+            .setTitle(price === 0 ? '🆓 New free game!' : '💰 New game!')
             .setDescription(`**${name}**`)
             .addFields(
                 { name: 'Dev', value: gameData.developer, inline: true },
-                { name: 'Cena', value: price === 0 ? 'FREE' : `${price}zł`, inline: true }
+                { name: 'Price', value: price === 0 ? 'FREE' : `${price}zł`, inline: true }
             )
             .setColor(parseInt(gameData.color.replace('#', ''), 16))
             .setTimestamp();
         
         await sendDiscordNotification(embed);
-        
         res.json({ success: true, game: saved });
     } catch (error) {
-        console.error('❌ Błąd POST /api/games:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.put('/api/games/:id', requireDiscordForWrite, async (req, res) => {
     try {
-        if (!Array.isArray(gamesCache)) {
-            return res.status(500).json({ error: 'Błąd serwera - cache nie jest tablicą' });
-        }
-        
         const existing = gamesCache.find(g => g.id === req.params.id);
-        if (!existing) {
-            return res.status(404).json({ error: 'Gra nie istnieje' });
-        }
+        if (!existing) return res.status(404).json({ error: 'Game not found' });
         
         const updated = await saveGame(req.params.id, { ...existing, ...req.body });
         res.json({ success: true, game: updated });
     } catch (error) {
-        console.error('❌ Błąd PUT /api/games:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -806,44 +722,37 @@ app.put('/api/games/:id', requireDiscordForWrite, async (req, res) => {
 app.delete('/api/games/:id', requireDiscordForWrite, async (req, res) => {
     try {
         const success = await deleteGame(req.params.id);
-        res.json({ success, message: success ? 'Usunięto' : 'Nie znaleziono' });
+        res.json({ success, message: success ? 'Deleted' : 'Not found' });
     } catch (error) {
-        console.error('❌ Błąd DELETE /api/games:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
 // === AUTH ===
+
 app.post('/api/auth/register', requireDiscordForWrite, async (req, res) => {
     try {
         const { username, password, email } = req.body;
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username i password wymagane' });
-        }
+        if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
         
         const users = await loadGlobalFile('users.json', {});
-        if (users[username]) {
-            return res.status(409).json({ error: 'Użytkownik już istnieje' });
-        }
+        if (users[username]) return res.status(409).json({ error: 'User exists' });
         
         const token = generateToken();
         users[username] = {
-            id: crypto.randomUUID(),
-            username,
-            email: email || '',
-            passwordHash: hashPassword(password),
-            token,
+            id: crypto.randomUUID(), username, email: email || '',
+            passwordHash: hashPassword(password), token,
             createdAt: new Date().toISOString()
         };
         
-        await saveGlobalFile('users.json', users, '👥 Użytkownicy');
+        await saveGlobalFile('users.json', users, '👥 Users');
         await getOrCreateUserChannel(username);
-        await saveUserFile(username, 'library.json', { games: [] }, '📚 Biblioteka');
-        await saveUserFile(username, 'friends.json', { friends: [], pending: [] }, '👥 Znajomi');
+        await saveUserFile(username, 'library.json', { games: [] }, '📚 Library');
+        await saveUserFile(username, 'friends.json', { friends: [], pending: [] }, '👥 Friends');
         
         const embed = new EmbedBuilder()
-            .setTitle('👤 Nowy użytkownik')
-            .setDescription(`**${username}** dołączył!`)
+            .setTitle('👤 New user')
+            .setDescription(`**${username}** joined!`)
             .setColor(0x00ff88);
         await sendDiscordNotification(embed);
         
@@ -860,26 +769,19 @@ app.post('/api/auth/login', requireDiscordForWrite, async (req, res) => {
         const user = users[username];
         
         if (!user || user.passwordHash !== hashPassword(password)) {
-            return res.status(401).json({ error: 'Złe dane logowania' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
         
         const token = generateToken();
         user.token = token;
         user.lastLogin = new Date().toISOString();
-        await saveGlobalFile('users.json', users, '👥 Użytkownicy');
+        await saveGlobalFile('users.json', users, '👥 Users');
         
-        // Sprawdź czy ma oczekujące zaproszenia przy logowaniu
         const hasPending = await checkUserPendingInvites(username);
         
         res.json({ 
-            success: true, 
-            token, 
-            user: { 
-                id: user.id, 
-                username: user.username, 
-                email: user.email,
-                hasPendingInvites: hasPending
-            }
+            success: true, token, 
+            user: { id: user.id, username: user.username, email: user.email, hasPendingInvites: hasPending }
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -888,65 +790,47 @@ app.post('/api/auth/login', requireDiscordForWrite, async (req, res) => {
 
 app.get('/api/auth/verify', requireDiscordForWrite, async (req, res) => {
     const auth = req.headers.authorization;
-    if (!auth?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Brak tokena' });
-    }
+    if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
     
     const token = auth.substring(7);
     const users = await loadGlobalFile('users.json', {});
     const user = Object.values(users).find(u => u.token === token);
     
-    if (!user) return res.status(401).json({ error: 'Nieprawidłowy token' });
+    if (!user) return res.status(401).json({ error: 'Invalid token' });
     
-    // Sprawdź czy ma oczekujące zaproszenia
     const hasPending = await checkUserPendingInvites(user.username);
-    
-    res.json({ 
-        valid: true, 
-        userId: user.id, 
-        username: user.username,
-        hasPendingInvites: hasPending
-    });
+    res.json({ valid: true, userId: user.id, username: user.username, hasPendingInvites: hasPending });
 });
 
-// === ZNAJOMI - POPRAWIONE ===
+// === FRIENDS ===
+
 app.get('/api/friends/:username', requireDiscordForWrite, async (req, res) => {
     try {
         const data = await loadUserFile(req.params.username, 'friends.json', { friends: [], pending: [] });
         const users = await loadGlobalFile('users.json', {});
         
-        // Konwersja starego formatu na nowy
         if (data.pending && !data.pendingInvites) {
             data.pendingInvites = data.pending.map(p => ({
-                from: p.from,
-                timestamp: p.at || new Date().toISOString()
+                from: p.from, timestamp: p.at || new Date().toISOString()
             }));
         }
         
         const friends = await Promise.all(
             (data.friends || []).map(async (name) => ({
-                username: name,
-                status: 'online',
-                lastSeen: users[name]?.lastLogin
+                username: name, status: 'online', lastSeen: users[name]?.lastLogin
             }))
         );
         
         const pendingInvites = (data.pendingInvites || data.pending || []).map(p => ({
-            from: p.from,
-            timestamp: p.timestamp || p.at || new Date().toISOString()
+            from: p.from, timestamp: p.timestamp || p.at || new Date().toISOString()
         }));
         
-        // Aktualizuj cache
         if (pendingInvites.length > 0) {
             pendingInvitesCache.set(req.params.username, pendingInvites.length);
         }
         
-        res.json({ 
-            friends, 
-            pendingInvites: pendingInvites 
-        });
+        res.json({ friends, pendingInvites });
     } catch (error) {
-        console.error('❌ Błąd GET /api/friends/:username:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -955,40 +839,30 @@ app.post('/api/friends/add', requireDiscordForWrite, async (req, res) => {
     try {
         const { fromUser, toUser } = req.body;
         const users = await loadGlobalFile('users.json', {});
-        
-        if (!users[toUser]) return res.status(404).json({ error: 'Nie ma takiego użytkownika' });
+        if (!users[toUser]) return res.status(404).json({ error: 'User not found' });
         
         const toData = await loadUserFile(toUser, 'friends.json', { friends: [], pending: [] });
         
-        // Konwersja starego formatu
         if (toData.pending && !toData.pendingInvites) {
             toData.pendingInvites = toData.pending.map(p => ({
-                from: p.from,
-                timestamp: p.at || new Date().toISOString()
+                from: p.from, timestamp: p.at || new Date().toISOString()
             }));
             delete toData.pending;
         }
         
         if (!toData.pendingInvites) toData.pendingInvites = [];
         
-        // Sprawdź czy już nie ma zaproszenia lub nie są znajomymi
         const alreadyPending = toData.pendingInvites.find(p => p.from === fromUser);
         const alreadyFriends = (toData.friends || []).includes(fromUser);
         
         if (!alreadyPending && !alreadyFriends) {
-            toData.pendingInvites.push({ 
-                from: fromUser, 
-                timestamp: new Date().toISOString() 
-            });
-            await saveUserFile(toUser, 'friends.json', toData, '👥 Znajomi');
-            
-            // Dodaj do cache powiadomień
+            toData.pendingInvites.push({ from: fromUser, timestamp: new Date().toISOString() });
+            await saveUserFile(toUser, 'friends.json', toData, '👥 Friends');
             pendingInvitesCache.set(toUser, toData.pendingInvites.length);
         }
         
         res.json({ success: true });
     } catch (error) {
-        console.error('❌ Błąd POST /api/friends/add:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -1000,51 +874,37 @@ app.post('/api/friends/respond', requireDiscordForWrite, async (req, res) => {
         const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
         const fromData = await loadUserFile(fromUser, 'friends.json', { friends: [], pending: [] });
         
-        // Konwersja starego formatu
         if (userData.pending && !userData.pendingInvites) {
             userData.pendingInvites = userData.pending.map(p => ({
-                from: p.from,
-                timestamp: p.at || new Date().toISOString()
+                from: p.from, timestamp: p.at || new Date().toISOString()
             }));
             delete userData.pending;
         }
         
-        // Usuń z pendingInvites
         userData.pendingInvites = (userData.pendingInvites || []).filter(p => p.from !== fromUser);
         
         if (accept) {
-            // Dodaj do znajomych obu stron
             if (!userData.friends) userData.friends = [];
             if (!fromData.friends) fromData.friends = [];
             
-            if (!userData.friends.includes(fromUser)) {
-                userData.friends.push(fromUser);
-            }
-            if (!fromData.friends.includes(username)) {
-                fromData.friends.push(username);
-            }
+            if (!userData.friends.includes(fromUser)) userData.friends.push(fromUser);
+            if (!fromData.friends.includes(username)) fromData.friends.push(username);
             
-            // Utwórz kanał czatu
             await saveChatFile(username, fromUser, {
-                participants: [username, fromUser],
-                messages: []
+                participants: [username, fromUser], messages: []
             });
         }
         
-        await saveUserFile(username, 'friends.json', userData, '👥 Znajomi');
-        await saveUserFile(fromUser, 'friends.json', fromData, '👥 Znajomi');
-        
-        // Aktualizuj cache
+        await saveUserFile(username, 'friends.json', userData, '👥 Friends');
+        await saveUserFile(fromUser, 'friends.json', fromData, '👥 Friends');
         await updatePendingInvitesCache(username);
         
         res.json({ success: true, accepted: accept });
     } catch (error) {
-        console.error('❌ Błąd POST /api/friends/respond:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// NOWY ENDPOINT - usuwanie znajomego
 app.delete('/api/friends/remove', requireDiscordForWrite, async (req, res) => {
     try {
         const { username, friendName } = req.body;
@@ -1055,17 +915,17 @@ app.delete('/api/friends/remove', requireDiscordForWrite, async (req, res) => {
         userData.friends = (userData.friends || []).filter(f => f !== friendName);
         friendData.friends = (friendData.friends || []).filter(f => f !== username);
         
-        await saveUserFile(username, 'friends.json', userData, '👥 Znajomi');
-        await saveUserFile(friendName, 'friends.json', friendData, '👥 Znajomi');
+        await saveUserFile(username, 'friends.json', userData, '👥 Friends');
+        await saveUserFile(friendName, 'friends.json', friendData, '👥 Friends');
         
         res.json({ success: true });
     } catch (error) {
-        console.error('❌ Błąd DELETE /api/friends/remove:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// === CZAT ===
+// === CHAT ===
+
 app.get('/api/chat/:user1/:user2', requireDiscordForWrite, async (req, res) => {
     const data = await loadChatFile(req.params.user1, req.params.user2);
     res.json(data || { messages: [], participants: [req.params.user1, req.params.user2] });
@@ -1075,16 +935,11 @@ app.post('/api/chat/send', requireDiscordForWrite, async (req, res) => {
     const { fromUser, toUser, content } = req.body;
     
     let chat = await loadChatFile(fromUser, toUser);
-    if (!chat) {
-        chat = { participants: [fromUser, toUser], messages: [] };
-    }
+    if (!chat) chat = { participants: [fromUser, toUser], messages: [] };
     
     chat.messages.push({
-        id: crypto.randomUUID(),
-        sender: fromUser,
-        content: content.trim(),
-        timestamp: new Date().toISOString(),
-        read: false
+        id: crypto.randomUUID(), sender: fromUser,
+        content: content.trim(), timestamp: new Date().toISOString(), read: false
     });
     
     if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
@@ -1093,59 +948,47 @@ app.post('/api/chat/send', requireDiscordForWrite, async (req, res) => {
     res.json({ success: true });
 });
 
-// === BIBLIOTEKA ===
+// === LIBRARY ===
+
 app.get('/api/users/:username/library', requireDiscordForWrite, async (req, res) => {
     const lib = await loadUserFile(req.params.username, 'library.json', { games: [] });
     const enriched = lib.games.map(g => ({
-        ...g,
-        gameDetails: gamesCache.find(gc => gc.id === g.gameId)
+        ...g, gameDetails: gamesCache.find(gc => gc.id === g.gameId)
     }));
     res.json(enriched);
 });
 
-// NOWY ENDPOINT - pobierz konkretną grę z biblioteki
 app.get('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
     try {
         const { username, gameId } = req.params;
         const lib = await loadUserFile(username, 'library.json', { games: [] });
         
         const gameEntry = lib.games.find(g => g.gameId === gameId);
-        if (!gameEntry) {
-            return res.status(404).json({ error: 'Gra nie znaleziona w bibliotece' });
-        }
+        if (!gameEntry) return res.status(404).json({ error: 'Game not in library' });
         
         const gameDetails = gamesCache.find(gc => gc.id === gameId);
-        res.json({
-            ...gameEntry,
-            gameDetails: gameDetails || null
-        });
+        res.json({ ...gameEntry, gameDetails: gameDetails || null });
     } catch (error) {
-        console.error('❌ Błąd GET /api/users/:username/library/:gameId:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.post('/api/users/:username/library', requireDiscordForWrite, async (req, res) => {
     const { gameId } = req.body;
-    if (!gamesCache.find(g => g.id === gameId)) {
-        return res.status(404).json({ error: 'Gra nie istnieje' });
-    }
+    if (!gamesCache.find(g => g.id === gameId)) return res.status(404).json({ error: 'Game not found' });
     
     const lib = await loadUserFile(req.params.username, 'library.json', { games: [] });
     if (!lib.games.find(g => g.gameId === gameId)) {
         lib.games.push({
-            gameId,
-            addedAt: new Date().toISOString(),
-            installed: false,
-            playTime: 0
+            gameId, addedAt: new Date().toISOString(),
+            installed: false, playTime: 0
         });
-        await saveUserFile(req.params.username, 'library.json', lib, '📚 Biblioteka');
+        await saveUserFile(req.params.username, 'library.json', lib, '📚 Library');
     }
     
     res.json({ success: true, library: lib.games });
 });
 
-// NOWY ENDPOINT - aktualizuj status instalacji gry
 app.put('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
     try {
         const { username, gameId } = req.params;
@@ -1154,25 +997,19 @@ app.put('/api/users/:username/library/:gameId', requireDiscordForWrite, async (r
         const lib = await loadUserFile(username, 'library.json', { games: [] });
         const gameEntry = lib.games.find(g => g.gameId === gameId);
         
-        if (!gameEntry) {
-            return res.status(404).json({ error: 'Gra nie znaleziona w bibliotece' });
-        }
+        if (!gameEntry) return res.status(404).json({ error: 'Game not in library' });
         
         gameEntry.installed = installed;
-        if (installPath !== undefined) {
-            gameEntry.installPath = installPath;
-        }
+        if (installPath !== undefined) gameEntry.installPath = installPath;
         gameEntry.updatedAt = new Date().toISOString();
         
-        await saveUserFile(username, 'library.json', lib, '📚 Biblioteka');
+        await saveUserFile(username, 'library.json', lib, '📚 Library');
         res.json({ success: true, game: gameEntry });
     } catch (error) {
-        console.error('❌ Błąd PUT /api/users/:username/library/:gameId:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// NOWY ENDPOINT - usuń grę z biblioteki
 app.delete('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
     try {
         const { username, gameId } = req.params;
@@ -1182,38 +1019,49 @@ app.delete('/api/users/:username/library/:gameId', requireDiscordForWrite, async
         lib.games = lib.games.filter(g => g.gameId !== gameId);
         
         if (lib.games.length === initialLength) {
-            return res.status(404).json({ error: 'Gra nie znaleziona w bibliotece' });
+            return res.status(404).json({ error: 'Game not in library' });
         }
         
-        await saveUserFile(username, 'library.json', lib, '📚 Biblioteka');
-        res.json({ success: true, message: 'Gra usunięta z biblioteki' });
+        await saveUserFile(username, 'library.json', lib, '📚 Library');
+        res.json({ success: true, message: 'Game removed from library' });
     } catch (error) {
-        console.error('❌ Błąd DELETE /api/users/:username/library/:gameId:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-console.log('📋 Zarejestrowane endpointy:');
-console.log('  GET  /health');
-console.log('  GET  /admin.html');
-console.log('  GET  /games');
-console.log('  GET  /games/:id');
-console.log('  GET  /games/:id/download');
-console.log('  POST /api/games');
-console.log('  PUT  /api/games/:id');
-console.log('  DELETE /api/games/:id');
-console.log('  POST /api/auth/register');
-console.log('  POST /api/auth/login');
-console.log('  GET  /api/auth/verify');
-console.log('  GET  /api/friends/:username');
-console.log('  GET  /api/friends/:username/has-pending  <-- NOWY');
-console.log('  POST /api/friends/add');
-console.log('  POST /api/friends/respond');
-console.log('  DELETE /api/friends/remove');
-console.log('  GET  /api/chat/:user1/:user2');
-console.log('  POST /api/chat/send');
-console.log('  GET  /api/users/:username/library');
-console.log('  GET  /api/users/:username/library/:gameId');
-console.log('  POST /api/users/:username/library');
-console.log('  PUT  /api/users/:username/library/:gameId');
-console.log('  DELETE /api/users/:username/library/:gameId');
+// === OBSŁUGA BŁĘDÓW I ZAMYKANIA ===
+
+// Zapobiegaj wyłączaniu przez SIGTERM z zewnętrznego pinger'a
+process.on('SIGTERM', () => {
+    console.log('⚠️ SIGTERM received - ignoring for keep-alive');
+    // NIE wyłączaj - kontynuuj działanie
+    // Jeśli to prawdziwe zamknięcie, użyj SIGINT
+});
+
+process.on('SIGINT', () => {
+    console.log('🛑 SIGINT received - shutting down gracefully');
+    isShuttingDown = true;
+    server.close(() => {
+        discordClient.destroy();
+        process.exit(0);
+    });
+});
+
+// Zapobiegaj wyłączaniu przez brak aktywności
+process.on('beforeExit', () => {
+    console.log('⚠️ beforeExit - keeping alive');
+    // Utrzymaj przy życiu
+    setTimeout(() => {}, 1000);
+});
+
+// Ignoruj błędy niekrytyczne
+process.on('unhandledRejection', (error) => {
+    console.error('⚠️ Unhandled Rejection:', error.message);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('⚠️ Uncaught Exception:', error.message);
+    // Nie wyłączaj - spróbuj kontynuować
+});
+
+console.log('📋 Server starting...');
