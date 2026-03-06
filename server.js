@@ -24,13 +24,25 @@ if (!DISCORD_TOKEN) {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// Discord Client
+// Discord Client - KONFIGURACJA KEEP-ALIVE
 const discordClient = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers // Dodane dla lepszej stabilności
+    ],
+    // WAŻNE: Zapobiega rozłączaniu przez timeout
+    rest: {
+        timeout: 60000,
+        retries: 3,
+        interval: 3500
+    },
+    // WAŻNE: Utrzymanie połączenia
+    ws: {
+        large_threshold: 250,
+        compress: false // Wyłączone dla stabilności
+    }
 });
 
 let discordReady = false;
@@ -44,7 +56,6 @@ let gamesCache = [];
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 // === CACHE DLA POWIADOMIEŃ O ZAPROSZENIACH ===
-// Przechowuje informacje o użytkownikach z oczekującymi zaproszeniami
 const pendingInvitesCache = new Map();
 
 // === START SERWERA HTTP ===
@@ -52,6 +63,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
     console.log(`📡 Admin panel: http://localhost:${PORT}/admin.html`);
 });
+
+// WAŻNE: Utrzymanie połączenia HTTP (keep-alive)
+server.keepAliveTimeout = 120000; // 2 minuty
+server.headersTimeout = 120000; // 2 minuty
 
 // === ENDPOINT /admin.html ===
 app.get('/admin.html', async (req, res) => {
@@ -68,15 +83,15 @@ app.get('/admin.html', async (req, res) => {
 
 // Health check - ROZSZERZONY O INFO O ZAPROSZENIACH
 app.get('/health', async (req, res) => {
-    const username = req.query.username; // Opcjonalny parametr do sprawdzenia konkretnego użytkownika
+    const username = req.query.username;
     
     const response = {
         status: discordReady ? 'OK' : 'INITIALIZING',
         discord: discordReady,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
     };
 
-    // Jeśli podano username, sprawdź czy ma oczekujące zaproszenia
     if (username && discordReady) {
         try {
             const hasPending = await checkUserPendingInvites(username);
@@ -96,7 +111,6 @@ app.get('/api/friends/:username/has-pending', requireDiscordForWrite, async (req
         const username = req.params.username;
         const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
         
-        // Konwersja starego formatu
         if (data.pending && !data.pendingInvites) {
             data.pendingInvites = data.pending.map(p => ({
                 from: p.from,
@@ -107,7 +121,6 @@ app.get('/api/friends/:username/has-pending', requireDiscordForWrite, async (req
         const pendingInvites = data.pendingInvites || data.pending || [];
         const hasPending = pendingInvites.length > 0;
         
-        // Aktualizuj cache
         if (hasPending) {
             pendingInvitesCache.set(username, pendingInvites.length);
         } else {
@@ -148,8 +161,6 @@ function requireDiscordForWrite(req, res, next) {
 async function checkUserPendingInvites(username) {
     try {
         const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
-        
-        // Obsługa obu formatów (stary i nowy)
         const pending = data.pendingInvites || data.pending || [];
         return pending.length > 0;
     } catch (error) {
@@ -167,7 +178,6 @@ async function getPendingInvitesCount(username) {
     }
 }
 
-// Funkcja aktualizująca cache zaproszeń (wywoływana przy każdej zmianie)
 async function updatePendingInvitesCache(username) {
     try {
         const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] });
@@ -188,6 +198,40 @@ async function initDiscord() {
     try {
         console.log('🔌 Łączenie z Discordem...');
         
+        // WAŻNE: Obsługa błędów połączenia
+        discordClient.on('error', (error) => {
+            console.error('❌ Discord Client Error:', error);
+            // Nie wyłączaj procesu - spróbuj ponownie połączyć
+        });
+
+        discordClient.on('disconnect', (event) => {
+            console.log('⚠️ Discord rozłączony:', event.code, event.reason);
+            discordReady = false;
+            // Automatyczne ponowne połączenie jest obsługiwane przez discord.js
+        });
+
+        discordClient.on('reconnecting', () => {
+            console.log('🔄 Ponowne łączenie z Discordem...');
+        });
+
+        discordClient.on('resume', (replayed) => {
+            console.log('✅ Połączenie wznowione, replayed events:', replayed);
+            discordReady = true;
+        });
+
+        // WAŻNE: Heartbeat keepalive
+        discordClient.on('shardReady', (shardId) => {
+            console.log(`✅ Shard ${shardId} gotowy`);
+        });
+
+        discordClient.on('shardDisconnect', (event, shardId) => {
+            console.log(`⚠️ Shard ${shardId} rozłączony`);
+        });
+
+        discordClient.on('shardReconnecting', (shardId) => {
+            console.log(`🔄 Shard ${shardId} łączy ponownie...`);
+        });
+
         discordClient.once('ready', async () => {
             console.log(`🤖 Bot: ${discordClient.user.tag}`);
             
@@ -203,9 +247,19 @@ async function initDiscord() {
                 discordReady = true;
                 console.log('✅ Discord gotowy!');
                 
-                // Uruchom okresowe sprawdzanie zaproszeń
-                setInterval(periodicPendingCheck, 30000); // Co 30 sekund
+                // WAŻNE: Heartbeat interval dla utrzymania połączenia
+                setInterval(() => {
+                    if (discordClient.ws.ping === -1) {
+                        console.log('⚠️ WebSocket ping -1, możliwe problemy z połączeniem');
+                    } else {
+                        console.log(`💓 Heartbeat ping: ${discordClient.ws.ping}ms`);
+                    }
+                }, 30000); // Co 30 sekund loguj ping
                 
+                // Sprawdzanie zaproszeń
+                setInterval(periodicPendingCheck, 30000);
+                
+                // Sync gier
                 setInterval(syncGamesFromDiscord, 300000);
                 
             } catch (error) {
@@ -213,10 +267,24 @@ async function initDiscord() {
             }
         });
         
+        // WAŻNE: Opcje logowania z retry
         await discordClient.login(DISCORD_TOKEN);
+        
+        // WAŻNE: Utrzymanie procesu przy błędach
+        process.on('unhandledRejection', (error) => {
+            console.error('⚠️ Unhandled Rejection:', error);
+            // Nie wyłączaj procesu
+        });
+
+        process.on('uncaughtException', (error) => {
+            console.error('⚠️ Uncaught Exception:', error);
+            // Nie wyłączaj procesu - zaloguj i kontynuuj
+        });
         
     } catch (error) {
         console.error('❌ Błąd Discord:', error);
+        // WAŻNE: Ponowna próba połączenia po błędzie
+        setTimeout(initDiscord, 10000);
     }
 }
 
@@ -224,8 +292,12 @@ async function initDiscord() {
 async function periodicPendingCheck() {
     if (!discordReady) return;
     
-    for (const username of pendingInvitesCache.keys()) {
-        await updatePendingInvitesCache(username);
+    try {
+        for (const username of pendingInvitesCache.keys()) {
+            await updatePendingInvitesCache(username);
+        }
+    } catch (error) {
+        console.error('Błąd periodicPendingCheck:', error);
     }
 }
 
@@ -251,7 +323,7 @@ async function initGamesChannel() {
             gamesChannel = await guild.channels.create({
                 name: 'games-json',
                 type: ChannelType.GuildText,
-                parent: STORAGE_CATEGORY_ID,
+                parent: storageCategory.id,
                 topic: '🎮 Automatycznie aktualizowany plik games.json',
                 permissionOverwrites: [
                     { 
@@ -317,7 +389,30 @@ async function uploadGamesJsonToDiscord() {
     }
 }
 
+// WAŻNE: Rozpocznij połączenie Discord
 initDiscord();
+
+// WAŻNE: Utrzymanie procesu Node.js przy życiu
+setInterval(() => {
+    // Pusty interval utrzymuje event loop przy życiu
+}, 60000);
+
+// WAŻNE: Obsługa sygnałów systemowych
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+        discordClient.destroy();
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully');
+    server.close(() => {
+        discordClient.destroy();
+        process.exit(0);
+    });
+});
 
 // === FUNKCJE POMOCNICZE ===
 function hashPassword(password) {
