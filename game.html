@@ -3,500 +3,542 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Szczegóły Gry - Nebula</title>
+    <title>Szczegóły gry - Nebula</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0a0a0f;
-            color: #ffffff;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
             min-height: 100vh;
+            color: #fff;
+            line-height: 1.6;
         }
-        
-        .header {
-            background: #12121a;
-            padding: 20px 40px;
-            border-bottom: 2px solid #00d4ff;
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Nawigacja */
+        .nav {
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            padding: 15px 0;
+            margin-bottom: 30px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
-        .header h1 {
-            color: #00d4ff;
+
+        .logo {
             font-size: 24px;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
             font-weight: bold;
-            transition: all 0.3s;
-            text-decoration: none;
-            display: inline-block;
+            background: linear-gradient(45deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            cursor: pointer;
         }
-        
-        .btn-primary {
-            background: #00d4ff;
-            color: #000;
+
+        .nav-links {
+            display: flex;
+            gap: 20px;
+            align-items: center;
         }
-        
-        .btn-success {
-            background: #00ff88;
-            color: #000;
-        }
-        
-        .btn-secondary {
-            background: #2a2a3a;
+
+        .nav-links a {
             color: #fff;
-            border: 1px solid #3a3a4a;
+            text-decoration: none;
+            opacity: 0.8;
+            transition: opacity 0.3s;
         }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 30px;
+
+        .nav-links a:hover {
+            opacity: 1;
         }
-        
-        .game-hero {
-            background: #16161f;
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 5px 15px;
             border-radius: 20px;
-            overflow: hidden;
-            margin-bottom: 30px;
-            border: 1px solid #2a2a3a;
+            cursor: pointer;
+            transition: all 0.3s;
         }
-        
-        .game-banner {
-            height: 300px;
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Główna sekcja gry */
+        .game-header {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 30px;
+        }
+
+        .game-icon-container {
             position: relative;
+        }
+
+        .game-icon {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 20px;
+            object-fit: cover;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 100px;
         }
-        
-        .game-banner img {
-            width: 150px;
-            height: 150px;
-            object-fit: cover;
-            border-radius: 24px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-        }
-        
-        .game-banner .emoji-icon {
-            font-size: 120px;
-            text-shadow: 0 10px 40px rgba(0,0,0,0.5);
-        }
-        
-        .game-info {
-            padding: 30px;
-        }
-        
-        .game-title {
-            font-size: 36px;
-            font-weight: bold;
+
+        .game-info h1 {
+            font-size: 42px;
             margin-bottom: 10px;
+            background: linear-gradient(45deg, #fff, #a8edea);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
-        
+
         .game-meta {
             display: flex;
-            gap: 20px;
-            color: #a0a0b0;
-            margin-bottom: 20px;
             flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+            opacity: 0.9;
         }
-        
-        .game-meta span {
+
+        .meta-tag {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
             display: flex;
             align-items: center;
             gap: 5px;
         }
-        
+
         .game-description {
             font-size: 16px;
-            line-height: 1.6;
-            color: #d0d0d0;
-            margin-bottom: 30px;
+            line-height: 1.8;
+            opacity: 0.9;
+            margin-bottom: 25px;
         }
-        
-        .game-actions {
+
+        .game-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Rating section */
+        .rating-section {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .rating-header {
             display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
         }
-        
+
+        .rating-display {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .average-rating {
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        .rating-count {
+            opacity: 0.7;
+            font-size: 14px;
+        }
+
+        .stars-display {
+            display: flex;
+            gap: 5px;
+            font-size: 24px;
+        }
+
+        .star {
+            color: #444;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .star.filled {
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .star:hover {
+            transform: scale(1.2);
+        }
+
+        .user-rating-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .rating-hint {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-bottom: 10px;
+        }
+
+        .rating-distribution {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-top: 15px;
+        }
+
+        .rating-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+        }
+
+        .rating-bar-fill {
+            flex: 1;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .rating-bar-progress {
+            height: 100%;
+            background: linear-gradient(90deg, #ffd700, #ffed4e);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        /* Screenshots */
         .screenshots-section {
             margin-bottom: 30px;
         }
-        
+
         .section-title {
             font-size: 24px;
             margin-bottom: 20px;
-            color: #00d4ff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        
+
         .screenshots-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 15px;
         }
-        
+
         .screenshot-item {
+            position: relative;
             aspect-ratio: 16/9;
-            background: #16161f;
-            border-radius: 12px;
+            border-radius: 15px;
             overflow: hidden;
             cursor: pointer;
-            transition: transform 0.2s;
-            border: 1px solid #2a2a3a;
+            transition: transform 0.3s;
+            background: rgba(0, 0, 0, 0.3);
         }
-        
+
         .screenshot-item:hover {
-            transform: scale(1.02);
-            border-color: #00d4ff;
+            transform: scale(1.05);
         }
-        
+
         .screenshot-item img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-        
-        .requirements-section {
-            background: #16161f;
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 30px;
-            border: 1px solid #2a2a3a;
-        }
-        
-        .req-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-        }
-        
-        .req-column h3 {
-            color: #ffaa00;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        
-        .req-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #2a2a3a;
-        }
-        
-        .req-item:last-child {
-            border-bottom: none;
-        }
-        
-        .req-label {
-            color: #6a6a7a;
-        }
-        
-        .req-value {
-            color: #fff;
-            font-weight: 500;
-        }
-        
-        /* Rating i komentarze */
-        .rating-section {
-            background: #16161f;
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 30px;
-            border: 1px solid #2a2a3a;
-        }
-        
-        .rating-summary {
-            display: flex;
-            align-items: center;
-            gap: 30px;
-            margin-bottom: 25px;
-            flex-wrap: wrap;
-        }
-        
-        .rating-big {
-            text-align: center;
-        }
-        
-        .rating-number {
-            font-size: 48px;
-            font-weight: bold;
-            color: #00d4ff;
-        }
-        
-        .rating-stars {
-            color: #ffaa00;
-            font-size: 24px;
-        }
-        
-        .rating-count {
-            color: #6a6a7a;
-            font-size: 14px;
-        }
-        
-        .rating-bars {
-            flex: 1;
-            min-width: 250px;
-        }
-        
-        .rating-bar {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 5px 0;
-        }
-        
-        .rating-bar span {
-            width: 30px;
-            color: #6a6a7a;
-            font-size: 14px;
-        }
-        
-        .bar-bg {
-            flex: 1;
-            height: 8px;
-            background: #2a2a3a;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        
-        .bar-fill {
-            height: 100%;
-            background: #00d4ff;
-            border-radius: 4px;
-            transition: width 0.3s;
-        }
-        
-        .your-rating {
-            text-align: center;
-            padding: 20px;
-            background: #0a0a0f;
-            border-radius: 12px;
-            min-width: 200px;
-        }
-        
-        .your-rating h4 {
-            margin-bottom: 10px;
-            color: #a0a0b0;
-        }
-        
-        .star-input {
-            display: flex;
-            gap: 5px;
-            justify-content: center;
-            font-size: 30px;
-            cursor: pointer;
-        }
-        
-        .star-input span {
-            color: #2a2a3a;
-            transition: color 0.2s;
-        }
-        
-        .star-input span:hover,
-        .star-input span.active {
-            color: #ffaa00;
-        }
-        
-        /* Komentarze */
-        .comments-section {
-            background: #16161f;
-            border-radius: 16px;
-            padding: 25px;
-            border: 1px solid #2a2a3a;
-        }
-        
-        .login-prompt {
-            text-align: center;
-            padding: 40px;
-            background: #0a0a0f;
-            border-radius: 12px;
-            margin-bottom: 20px;
-        }
-        
-        .comment-form {
-            margin-bottom: 25px;
-        }
-        
-        .comment-input {
+
+        .screenshot-placeholder {
             width: 100%;
-            padding: 15px;
-            background: #0a0a0f;
-            border: 1px solid #2a2a3a;
-            border-radius: 12px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 48px;
+        }
+
+        /* Comments Section */
+        .comments-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .comment-form {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .comment-textarea {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             color: #fff;
-            font-size: 14px;
+            padding: 15px;
+            border-radius: 10px;
             resize: vertical;
             min-height: 100px;
-            margin-bottom: 10px;
+            font-family: inherit;
+            margin-bottom: 15px;
         }
-        
-        .comment-input:focus {
+
+        .comment-textarea:focus {
             outline: none;
             border-color: #00d4ff;
         }
-        
-        .comment-submit {
+
+        .comment-form-actions {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
-        .comment-list {
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .login-prompt {
+            text-align: center;
+            padding: 40px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .login-prompt a {
+            color: #00d4ff;
+            text-decoration: none;
+        }
+
+        /* Comments List */
+        .comments-list {
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 20px;
         }
-        
+
         .comment {
-            background: #0a0a0f;
-            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
             padding: 20px;
+            border-radius: 15px;
+            border-left: 4px solid #00d4ff;
         }
-        
+
         .comment-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }
-        
+
         .comment-author {
+            font-weight: bold;
+            color: #00d4ff;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        
-        .avatar {
-            width: 40px;
-            height: 40px;
-            background: #00d4ff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: #000;
-        }
-        
-        .comment-meta {
-            color: #6a6a7a;
+
+        .comment-date {
             font-size: 12px;
+            opacity: 0.6;
         }
-        
-        .comment-rating {
-            color: #ffaa00;
-        }
-        
+
         .comment-content {
-            color: #d0d0d0;
-            line-height: 1.5;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .comment-rating {
+            color: #ffd700;
             margin-bottom: 10px;
         }
-        
+
         .comment-actions {
             display: flex;
             gap: 15px;
+            align-items: center;
         }
-        
-        .comment-action {
-            background: none;
+
+        .vote-btn {
+            background: rgba(255, 255, 255, 0.1);
             border: none;
-            color: #6a6a7a;
+            color: #fff;
+            padding: 5px 15px;
+            border-radius: 20px;
             cursor: pointer;
-            font-size: 13px;
             display: flex;
             align-items: center;
             gap: 5px;
-            transition: color 0.2s;
+            transition: all 0.2s;
+            font-size: 14px;
         }
-        
-        .comment-action:hover {
-            color: #00d4ff;
+
+        .vote-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
-        
-        .comment-action.liked {
+
+        .vote-btn.liked {
+            background: rgba(0, 255, 0, 0.2);
             color: #00ff88;
         }
-        
-        .comment-action.disliked {
-            color: #ff3366;
+
+        .vote-btn.disliked {
+            background: rgba(255, 0, 0, 0.2);
+            color: #ff4444;
         }
-        
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255,255,255,.3);
-            border-radius: 50%;
-            border-top-color: #00d4ff;
-            animation: spin 1s ease-in-out infinite;
+
+        .delete-btn {
+            background: rgba(255, 0, 0, 0.2);
+            border: none;
+            color: #ff4444;
+            padding: 5px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
         }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+
+        .delete-btn:hover {
+            background: rgba(255, 0, 0, 0.3);
         }
-        
-        .empty-state {
+
+        .no-comments {
             text-align: center;
             padding: 40px;
-            color: #6a6a7a;
+            opacity: 0.6;
         }
-        
-        .toast {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            padding: 15px 25px;
-            border-radius: 8px;
-            color: #fff;
-            font-weight: bold;
-            transform: translateX(400px);
-            transition: transform 0.3s;
-            z-index: 2000;
+
+        /* Loading & Error States */
+        .loading {
+            text-align: center;
+            padding: 60px;
+            font-size: 18px;
         }
-        
-        .toast.show {
-            transform: translateX(0);
+
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            color: #ff4444;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin: 20px 0;
         }
-        
-        .toast.success { background: #00ff88; color: #000; }
-        .toast.error { background: #ff3366; }
-        .toast.info { background: #00d4ff; color: #000; }
-        
-        /* Modal zdjęcia */
-        .image-modal {
+
+        /* Lightbox */
+        .lightbox {
             display: none;
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 3000;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
             justify-content: center;
             align-items: center;
         }
-        
-        .image-modal img {
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox img {
             max-width: 90%;
             max-height: 90%;
-            border-radius: 12px;
+            border-radius: 10px;
         }
-        
-        .image-modal-close {
+
+        .lightbox-close {
             position: absolute;
             top: 20px;
             right: 40px;
@@ -504,185 +546,612 @@
             color: #fff;
             cursor: pointer;
         }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .game-header {
+                grid-template-columns: 1fr;
+            }
+
+            .game-icon {
+                max-width: 200px;
+                margin: 0 auto;
+            }
+
+            .game-info h1 {
+                font-size: 28px;
+            }
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #00d4ff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🌌 NEBULA</h1>
-        <div>
-            <a href="/admin.html" class="btn btn-secondary">← Powrót do Admin</a>
-        </div>
-    </div>
-    
-    <div class="container">
-        <!-- Hero Section -->
-        <div class="game-hero" id="gameHero">
-            <div class="loading" style="margin: 100px auto; display: block;"></div>
-        </div>
-        
-        <!-- Screenshots -->
-        <div class="screenshots-section" id="screenshotsSection" style="display: none;">
-            <h2 class="section-title">📸 Screenshoty</h2>
-            <div class="screenshots-grid" id="screenshotsGrid"></div>
-        </div>
-        
-        <!-- Wymagania -->
-        <div class="requirements-section" id="requirementsSection" style="display: none;">
-            <h2 class="section-title">🖥️ Wymagania Systemowe</h2>
-            <div class="req-grid" id="requirementsGrid"></div>
-        </div>
-        
-        <!-- Rating -->
-        <div class="rating-section" id="ratingSection" style="display: none;">
-            <h2 class="section-title">⭐ Oceny</h2>
-            <div class="rating-summary">
-                <div class="rating-big">
-                    <div class="rating-number" id="avgRating">0.0</div>
-                    <div class="rating-stars" id="avgStars">★★★★★</div>
-                    <div class="rating-count" id="totalRatings">0 ocen</div>
-                </div>
-                <div class="rating-bars" id="ratingBars"></div>
-                <div class="your-rating" id="yourRatingSection">
-                    <h4>Twoja ocena</h4>
-                    <div class="star-input" id="starInput">
-                        <span data-rating="1">★</span>
-                        <span data-rating="2">★</span>
-                        <span data-rating="3">★</span>
-                        <span data-rating="4">★</span>
-                        <span data-rating="5">★</span>
-                    </div>
-                    <div id="yourRatingText" style="margin-top: 10px; color: #6a6a7a; font-size: 14px;">Kliknij aby ocenić</div>
+    <!-- Nawigacja -->
+    <nav class="nav">
+        <div class="nav-content">
+            <div class="logo" onclick="window.location.href='/'">NEBULA</div>
+            <div class="nav-links">
+                <a href="/">Gry</a>
+                <a href="/library.html">Biblioteka</a>
+                <a href="/friends.html">Znajomi</a>
+                <div class="user-info" id="userInfo">
+                    <span id="usernameDisplay"></span>
+                    <button class="logout-btn" onclick="logout()" style="display:none" id="logoutBtn">Wyloguj</button>
                 </div>
             </div>
         </div>
-        
-        <!-- Komentarze -->
-        <div class="comments-section">
-            <h2 class="section-title">💬 Komentarze</h2>
-            
-            <div id="commentAuthSection">
-                <!-- Tutaj będzie formularz lub prompt logowania -->
-            </div>
-            
-            <div class="comment-list" id="commentsList">
-                <div class="loading" style="margin: 20px auto; display: block;"></div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal zdjęcia -->
-    <div class="image-modal" id="imageModal" onclick="closeImageModal()">
-        <span class="image-modal-close">&times;</span>
-        <img src="" alt="Screenshot" id="modalImage">
-    </div>
-    
-    <div class="toast" id="toast"></div>
+    </nav>
 
-    <script>
-        const API_URL = window.location.origin;
-        
-        // Pobierz ID gry z URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const gameId = urlParams.get('id');
-        const guildId = urlParams.get('guildId') || '';
-        
-        let currentGame = null;
-        let currentUser = null;
-        let comments = [];
-        
-        // Sprawdź czy użytkownik jest zalogowany
-        function checkAuth() {
-            const token = localStorage.getItem('nebula_token');
-            const username = localStorage.getItem('nebula_username');
-            
-            if (token && username) {
-                currentUser = { token, username };
-                return true;
-            }
-            return false;
-        }
-        
-        async function loadGame() {
-            if (!gameId) {
-                document.getElementById('gameHero').innerHTML = `
-                    <div class="empty-state">
-                        <h3>❌ Nie podano ID gry</h3>
-                        <p>Dodaj ?id=GAME_ID do adresu URL</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_URL}/games/${gameId}?guildId=${guildId}`);
-                if (!response.ok) throw new Error('Game not found');
-                
-                currentGame = await response.json();
-                renderGame();
-                loadScreenshots();
-                loadRequirements();
-                loadRatings();
-                loadComments();
-                
-            } catch (error) {
-                console.error('Błąd ładowania gry:', error);
-                document.getElementById('gameHero').innerHTML = `
-                    <div class="empty-state">
-                        <h3>❌ Nie znaleziono gry</h3>
-                        <p>${error.message}</p>
-                    </div>
-                `;
-            }
-        }
-        
-        function renderGame() {
-            const hero = document.getElementById('gameHero');
-            const isFree = currentGame.price === 0;
-            
-            let iconHtml;
-            if (currentGame.iconUrl) {
-                iconHtml = `<img src="${currentGame.iconUrl}" alt="${currentGame.name}">`;
-            } else {
-                iconHtml = `<div class="emoji-icon">${currentGame.icon || '🎮'}</div>`;
-            }
-            
-            hero.innerHTML = `
-                <div class="game-banner" style="background: ${currentGame.color || '#00d4ff'}30;">
-                    ${iconHtml}
+    <div class="container">
+        <!-- Loading State -->
+        <div id="loadingState" class="loading">
+            <div class="spinner"></div>
+            Ładowanie informacji o grze...
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="error" style="display:none"></div>
+
+        <!-- Game Content -->
+        <div id="gameContent" style="display:none">
+            <!-- Header -->
+            <div class="game-header">
+                <div class="game-icon-container">
+                    <div id="gameIcon" class="game-icon">🎮</div>
                 </div>
                 <div class="game-info">
-                    <h1 class="game-title">${currentGame.name}</h1>
+                    <h1 id="gameTitle">Nazwa gry</h1>
                     <div class="game-meta">
-                        <span>👤 ${currentGame.developer || 'Unknown'}</span>
-                        <span>📅 ${currentGame.releaseDate || 'Brak daty'}</span>
-                        <span>🎮 ${currentGame.genre || 'Nieznany gatunek'}</span>
-                        <span>💾 ${currentGame.size ? currentGame.size + ' GB' : 'N/A'}</span>
-                        <span style="color: ${isFree ? '#00ff88' : '#ffaa00'}; font-weight: bold;">
-                            ${isFree ? 'DARMOWE' : currentGame.price + ' zł'}
-                        </span>
+                        <span class="meta-tag" id="gameGenre">🎯 Gatunek</span>
+                        <span class="meta-tag" id="gameDeveloper">👨‍💻 Deweloper</span>
+                        <span class="meta-tag" id="gamePrice">💰 Cena</span>
+                        <span class="meta-tag" id="gamePegi">🔞 PEGI</span>
+                        <span class="meta-tag" id="gameRelease">📅 Data</span>
                     </div>
-                    <div class="game-description">
-                        ${currentGame.description || 'Brak opisu'}
+                    <p class="game-description" id="gameDescription">Opis gry...</p>
+                    
+                    <div class="game-stats">
+                        <div class="stat-box">
+                            <div class="stat-value" id="gameVersion">1.0</div>
+                            <div class="stat-label">Wersja</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="gameSize">--</div>
+                            <div class="stat-label">Rozmiar</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="totalComments">0</div>
+                            <div class="stat-label">Komentarze</div>
+                        </div>
                     </div>
-                    <div class="game-actions">
-                        ${currentGame.download_url ? 
-                            `<a href="${currentGame.download_url}" target="_blank" class="btn btn-success">⬇️ Pobierz</a>` : 
-                            `<button class="btn btn-success" disabled>Brak linku</button>`
-                        }
-                        <span class="btn btn-secondary">PEGI ${currentGame.pegi || 12}</span>
-                        <span class="btn btn-secondary">v${currentGame.version || '1.0'}</span>
+
+                    <!-- Rating Section -->
+                    <div class="rating-section">
+                        <div class="rating-header">
+                            <div class="rating-display">
+                                <div class="average-rating" id="averageRating">0.0</div>
+                                <div>
+                                    <div class="stars-display" id="averageStars"></div>
+                                    <div class="rating-count" id="totalRatings">0 ocen</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rating-distribution" id="ratingDistribution"></div>
+                        
+                        <div class="user-rating-section" id="userRatingSection" style="display:none">
+                            <div class="rating-hint">Twoja ocena:</div>
+                            <div class="stars-display" id="userRatingStars">
+                                <span class="star" data-rating="1">★</span>
+                                <span class="star" data-rating="2">★</span>
+                                <span class="star" data-rating="3">★</span>
+                                <span class="star" data-rating="4">★</span>
+                                <span class="star" data-rating="5">★</span>
+                            </div>
+                        </div>
+                        
+                        <div class="rating-hint" id="loginToRate" style="display:none">
+                            <a href="/login.html">Zaloguj się</a>, aby ocenić tę grę
+                        </div>
+                    </div>
+
+                    <button class="btn" id="downloadBtn" style="display:none" onclick="downloadGame()">
+                        Pobierz grę
+                    </button>
+                </div>
+            </div>
+
+            <!-- Screenshots -->
+            <div class="screenshots-section">
+                <h2 class="section-title">📸 Screenshoty</h2>
+                <div class="screenshots-grid" id="screenshotsGrid">
+                    <!-- Dynamicznie wypełniane -->
+                </div>
+            </div>
+
+            <!-- Comments -->
+            <div class="comments-section">
+                <h2 class="section-title">💬 Komentarze</h2>
+                
+                <!-- Comment Form (tylko dla zalogowanych) -->
+                <div id="commentForm" class="comment-form" style="display:none">
+                    <textarea class="comment-textarea" id="commentText" placeholder="Napisz swoją opinię o tej grze... (opcjonalnie dodaj ocenę gwiazdkową powyżej)"></textarea>
+                    <div class="comment-form-actions">
+                        <span style="opacity:0.7;font-size:14px">Bądź konstruktywny i szanuj innych użytkowników</span>
+                        <button class="btn" onclick="addComment()">Dodaj komentarz</button>
                     </div>
                 </div>
-            `;
+
+                <!-- Login Prompt -->
+                <div id="loginPrompt" class="login-prompt" style="display:none">
+                    <p><a href="/login.html">Zaloguj się</a>, aby dodać komentarz i ocenić tę grę</p>
+                </div>
+
+                <!-- Comments List -->
+                <div class="comments-list" id="commentsList">
+                    <!-- Dynamicznie wypełniane -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <span class="lightbox-close">&times;</span>
+        <img src="" alt="Screenshot" id="lightboxImg">
+    </div>
+
+    <script>
+        // Konfiguracja
+        const API_URL = ''; // Pusty = ten sam host
+        let currentGameId = null;
+        let currentGame = null;
+        let currentUser = null;
+        let userRating = 0;
+
+        // Inicjalizacja
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            currentGameId = urlParams.get('id');
+            
+            if (!currentGameId) {
+                showError('Nie podano ID gry');
+                return;
+            }
+
+            checkAuth();
+            loadGame();
+            loadComments();
+            loadScreenshots();
+            loadRatings();
+        });
+
+        // Sprawdzenie autoryzacji
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            const username = localStorage.getItem('username');
+            
+            if (token && username) {
+                try {
+                    const response = await fetch(`${API_URL}/api/auth/verify`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (response.ok) {
+                        currentUser = { username, token };
+                        document.getElementById('usernameDisplay').textContent = username;
+                        document.getElementById('logoutBtn').style.display = 'block';
+                        document.getElementById('commentForm').style.display = 'block';
+                        document.getElementById('userRatingSection').style.display = 'block';
+                        setupRatingStars();
+                    } else {
+                        throw new Error('Invalid token');
+                    }
+                } catch (e) {
+                    logout();
+                }
+            } else {
+                document.getElementById('loginPrompt').style.display = 'block';
+                document.getElementById('loginToRate').style.display = 'block';
+            }
         }
-        
-        function loadScreenshots() {
-            const screenshots = currentGame.screenshots || [];
-            if (screenshots.length === 0) return;
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.reload();
+        }
+
+        // Ładowanie danych gry
+        async function loadGame() {
+            try {
+                const response = await fetch(`${API_URL}/games/${currentGameId}`);
+                if (!response.ok) throw new Error('Nie znaleziono gry');
+                
+                currentGame = await response.json();
+                displayGame();
+            } catch (error) {
+                showError('Nie udało się załadować gry: ' + error.message);
+            }
+        }
+
+        function displayGame() {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('gameContent').style.display = 'block';
+
+            document.getElementById('gameTitle').textContent = currentGame.name;
+            document.getElementById('gameDescription').textContent = currentGame.description || 'Brak opisu';
+            document.getElementById('gameGenre').textContent = `🎯 ${currentGame.genre || 'Nieznany'}`;
+            document.getElementById('gameDeveloper').textContent = `👨‍💻 ${currentGame.developer || 'Nieznany'}`;
+            document.getElementById('gamePrice').textContent = currentGame.price === 0 ? '💰 DARMOWE' : `💰 ${currentGame.price}zł`;
+            document.getElementById('gamePegi').textContent = `🔞 PEGI ${currentGame.pegi || '?'}`;
+            document.getElementById('gameRelease').textContent = `📅 ${currentGame.releaseDate || 'Nieznana'}`;
+            document.getElementById('gameVersion').textContent = currentGame.version || '1.0';
+            document.getElementById('gameSize').textContent = currentGame.size || '--';
+
+            // Ikona
+            const iconEl = document.getElementById('gameIcon');
+            if (currentGame.iconUrl) {
+                iconEl.innerHTML = `<img src="${currentGame.iconUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:20px">`;
+            } else {
+                iconEl.textContent = currentGame.icon || '🎮';
+            }
+
+            // Przycisk pobierania
+            if (currentGame.download_url) {
+                document.getElementById('downloadBtn').style.display = 'inline-block';
+            }
+        }
+
+        async function downloadGame() {
+            if (!currentGame.download_url) return;
             
-            document.getElementById('screenshotsSection').style.display = 'block';
-            const grid = document.getElementById('screenshotsGrid');
+            try {
+                const response = await fetch(`${API_URL}/games/${currentGameId}/download`);
+                const data = await response.json();
+                if (data.url) {
+                    window.open(data.url, '_blank');
+                }
+            } catch (error) {
+                alert('Błąd pobierania: ' + error.message);
+            }
+        }
+
+        // Screenshoty
+        async function loadScreenshots() {
+            try {
+                const response = await fetch(`${API_URL}/api/screenshots/${currentGameId}`);
+                const data = await response.json();
+                
+                const grid = document.getElementById('screenshotsGrid');
+                
+                if (data.screenshots.length === 0) {
+                    grid.innerHTML = '<div class="no-comments">Brak screenshotów</div>';
+                    return;
+                }
+
+                grid.innerHTML = data.screenshots.map(s => `
+                    <div class="screenshot-item" onclick="openLightbox('${s.url}')">
+                        <img src="${s.url}" alt="Screenshot" loading="lazy">
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Błąd ładowania screenshotów:', error);
+            }
+        }
+
+        // Oceny
+        async function loadRatings() {
+            try {
+                const url = currentUser 
+                    ? `${API_URL}/api/games/${currentGameId}/ratings?username=${currentUser.username}`
+                    : `${API_URL}/api/games/${currentGameId}/ratings`;
+                    
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                document.getElementById('averageRating').textContent = data.averageRating.toFixed(1);
+                document.getElementById('totalRatings').textContent = `${data.totalRatings} ocen`;
+                
+                // Gwiazdki średniej
+                const starsContainer = document.getElementById('averageStars');
+                starsContainer.innerHTML = generateStars(Math.round(data.averageRating));
+                
+                // Rozkład ocen
+                const distContainer = document.getElementById('ratingDistribution');
+                const maxCount = Math.max(...Object.values(data.distribution), 1);
+                
+                distContainer.innerHTML = [5, 4, 3, 2, 1].map(star => {
+                    const count = data.distribution[star] || 0;
+                    const percentage = (count / data.totalRatings * 100) || 0;
+                    const width = (count / maxCount * 100) || 0;
+                    
+                    return `
+                        <div class="rating-bar">
+                            <span>${star}★</span>
+                            <div class="rating-bar-fill">
+                                <div class="rating-bar-progress" style="width: ${width}%"></div>
+                            </div>
+                            <span>${count}</span>
+                        </div>
+                    `;
+                }).join('');
+
+                // Twoja ocena
+                if (data.yourRating && currentUser) {
+                    userRating = data.yourRating;
+                    updateUserStarsDisplay();
+                }
+            } catch (error) {
+                console.error('Błąd ładowania ocen:', error);
+            }
+        }
+
+        function generateStars(count) {
+            return Array(5).fill(0).map((_, i) => 
+                `<span class="star ${i < count ? 'filled' : ''}">★</span>`
+            ).join('');
+        }
+
+        function setupRatingStars() {
+            const stars = document.querySelectorAll('#userRatingStars .star');
             
-            grid.innerHTML = screenshots.map((url, index) => `
-                <div class="screenshot-item" onclick="openImageModal('${url}')">
-                    <img src="${url}" alt="Screenshot ${index + 
+            stars.forEach(star => {
+                star.addEventListener('click', async () => {
+                    const rating = parseInt(star.dataset.rating);
+                    await submitRating(rating);
+                });
+                
+                star.addEventListener('mouseenter', () => {
+                    const rating = parseInt(star.dataset.rating);
+                    highlightStars(rating);
+                });
+            });
+
+            document.getElementById('userRatingStars').addEventListener('mouseleave', () => {
+                updateUserStarsDisplay();
+            });
+        }
+
+        function highlightStars(count) {
+            const stars = document.querySelectorAll('#userRatingStars .star');
+            stars.forEach((star, index) => {
+                star.classList.toggle('filled', index < count);
+            });
+        }
+
+        function updateUserStarsDisplay() {
+            highlightStars(userRating);
+        }
+
+        async function submitRating(rating) {
+            if (!currentUser) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/games/${currentGameId}/rate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    },
+                    body: JSON.stringify({
+                        username: currentUser.username,
+                        rating: rating
+                    })
+                });
+
+                if (response.ok) {
+                    userRating = rating;
+                    updateUserStarsDisplay();
+                    loadRatings(); // Odśwież statystyki
+                    showNotification('Ocena zapisana!');
+                }
+            } catch (error) {
+                alert('Błąd zapisywania oceny: ' + error.message);
+            }
+        }
+
+        // Komentarze
+        async function loadComments() {
+            try {
+                const response = await fetch(`${API_URL}/api/games/${currentGameId}/comments`);
+                const data = await response.json();
+                
+                document.getElementById('totalComments').textContent = data.total;
+                
+                const list = document.getElementById('commentsList');
+                
+                if (data.comments.length === 0) {
+                    list.innerHTML = '<div class="no-comments">Brak komentarzy. Bądź pierwszy!</div>';
+                    return;
+                }
+
+                list.innerHTML = data.comments.map(c => `
+                    <div class="comment" data-id="${c.id}">
+                        <div class="comment-header">
+                            <div class="comment-author">
+                                ${c.username}
+                                ${c.rating ? `<span class="comment-rating">${'★'.repeat(c.rating)}</span>` : ''}
+                            </div>
+                            <div class="comment-date">${formatDate(c.createdAt)}</div>
+                        </div>
+                        <div class="comment-content">${escapeHtml(c.content)}</div>
+                        <div class="comment-actions">
+                            <button class="vote-btn" onclick="voteComment('${c.id}', 'like')">
+                                👍 ${c.likes || 0}
+                            </button>
+                            <button class="vote-btn" onclick="voteComment('${c.id}', 'dislike')">
+                                👎 ${c.dislikes || 0}
+                            </button>
+                            ${c.username === currentUser?.username ? 
+                                `<button class="delete-btn" onclick="deleteComment('${c.id}')">Usuń</button>` : ''
+                            }
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Błąd ładowania komentarzy:', error);
+            }
+        }
+
+        async function addComment() {
+            const content = document.getElementById('commentText').value.trim();
+            if (!content) {
+                alert('Wpisz treść komentarza');
+                return;
+            }
+
+            if (!currentUser) {
+                alert('Musisz być zalogowany');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/games/${currentGameId}/comments`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    },
+                    body: JSON.stringify({
+                        username: currentUser.username,
+                        content: content,
+                        rating: userRating || null
+                    })
+                });
+
+                if (response.ok) {
+                    document.getElementById('commentText').value = '';
+                    loadComments();
+                    loadRatings();
+                }
+            } catch (error) {
+                alert('Błąd dodawania komentarza: ' + error.message);
+            }
+        }
+
+        async function deleteComment(commentId) {
+            if (!confirm('Czy na pewno chcesz usunąć ten komentarz?')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/api/games/${currentGameId}/comments/${commentId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    },
+                    body: JSON.stringify({
+                        username: currentUser.username
+                    })
+                });
+
+                if (response.ok) {
+                    loadComments();
+                    loadRatings();
+                }
+            } catch (error) {
+                alert('Błąd usuwania komentarza: ' + error.message);
+            }
+        }
+
+        async function voteComment(commentId, type) {
+            if (!currentUser) {
+                alert('Zaloguj się, aby głosować');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/games/${currentGameId}/comments/${commentId}/vote`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    },
+                    body: {
+                        username: currentUser.username,
+                        type: type
+                    }
+                });
+
+                if (response.ok) {
+                    loadComments();
+                }
+            } catch (error) {
+                console.error('Błąd głosowania:', error);
+            }
+        }
+
+        // Pomocnicze
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('pl-PL', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showError(message) {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('errorState').style.display = 'block';
+            document.getElementById('errorState').textContent = message;
+        }
+
+        function showNotification(message) {
+            // Proste powiadomienie - można rozbudować
+            const div = document.createElement('div');
+            div.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: rgba(0, 212, 255, 0.9);
+                color: #000;
+                padding: 15px 25px;
+                border-radius: 10px;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+            `;
+            div.textContent = message;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 3000);
+        }
+
+        // Lightbox
+        function openLightbox(url) {
+            document.getElementById('lightboxImg').src = url;
+            document.getElementById('lightbox').classList.add('active');
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+        }
+
+        // Keyboard nav
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeLightbox();
+        });
+    </script>
+</body>
+</html>
