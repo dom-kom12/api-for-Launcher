@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Szczegóły Gry - Nebula</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0f;
+            color: #ffffff;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #12121a;
+            padding: 20px 40px;
+            border-bottom: 2px solid #00d4ff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #00d4ff;
+            font-size: 24px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: #00d4ff;
+            color: #000;
+        }
+        
+        .btn-success {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .btn-secondary {
+            background: #2a2a3a;
+            color: #fff;
+            border: 1px solid #3a3a4a;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+        
+        .game-hero {
+            background: #16161f;
+            border-radius: 20px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            border: 1px solid #2a2a3a;
+        }
+        
+        .game-banner {
+            height: 300px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .game-banner img {
+            width: 150px;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        
+        .game-banner .emoji-icon {
+            font-size: 120px;
+            text-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        
+        .game-info {
+            padding: 30px;
+        }
+        
+        .game-title {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .game-meta {
+            display: flex;
+            gap: 20px;
+            color: #a0a0b0;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .game-meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .game-description {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #d0d0d0;
+            margin-bottom: 30px;
+        }
+        
+        .game-actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .screenshots-section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #00d4ff;
+        }
+        
+        .screenshots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .screenshot-item {
+            aspect-ratio: 16/9;
+            background: #16161f;
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s;
+            border: 1px solid #2a2a3a;
+        }
+        
+        .screenshot-item:hover {
+            transform: scale(1.02);
+            border-color: #00d4ff;
+        }
+        
+        .screenshot-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .requirements-section {
+            background: #16161f;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid #2a2a3a;
+        }
+        
+        .req-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        .req-column h3 {
+            color: #ffaa00;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .req-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #2a2a3a;
+        }
+        
+        .req-item:last-child {
+            border-bottom: none;
+        }
+        
+        .req-label {
+            color: #6a6a7a;
+        }
+        
+        .req-value {
+            color: #fff;
+            font-weight: 500;
+        }
+        
+        /* Rating i komentarze */
+        .rating-section {
+            background: #16161f;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid #2a2a3a;
+        }
+        
+        .rating-summary {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        
+        .rating-big {
+            text-align: center;
+        }
+        
+        .rating-number {
+            font-size: 48px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        
+        .rating-stars {
+            color: #ffaa00;
+            font-size: 24px;
+        }
+        
+        .rating-count {
+            color: #6a6a7a;
+            font-size: 14px;
+        }
+        
+        .rating-bars {
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .rating-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 5px 0;
+        }
+        
+        .rating-bar span {
+            width: 30px;
+            color: #6a6a7a;
+            font-size: 14px;
+        }
+        
+        .bar-bg {
+            flex: 1;
+            height: 8px;
+            background: #2a2a3a;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .bar-fill {
+            height: 100%;
+            background: #00d4ff;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        
+        .your-rating {
+            text-align: center;
+            padding: 20px;
+            background: #0a0a0f;
+            border-radius: 12px;
+            min-width: 200px;
+        }
+        
+        .your-rating h4 {
+            margin-bottom: 10px;
+            color: #a0a0b0;
+        }
+        
+        .star-input {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            font-size: 30px;
+            cursor: pointer;
+        }
+        
+        .star-input span {
+            color: #2a2a3a;
+            transition: color 0.2s;
+        }
+        
+        .star-input span:hover,
+        .star-input span.active {
+            color: #ffaa00;
+        }
+        
+        /* Komentarze */
+        .comments-section {
+            background: #16161f;
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid #2a2a3a;
+        }
+        
+        .login-prompt {
+            text-align: center;
+            padding: 40px;
+            background: #0a0a0f;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .comment-form {
+            margin-bottom: 25px;
+        }
+        
+        .comment-input {
+            width: 100%;
+            padding: 15px;
+            background: #0a0a0f;
+            border: 1px solid #2a2a3a;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 100px;
+            margin-bottom: 10px;
+        }
+        
+        .comment-input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+        
+        .comment-submit {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .comment-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .comment {
+            background: #0a0a0f;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .comment-author {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .avatar {
+            width: 40px;
+            height: 40px;
+            background: #00d4ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #000;
+        }
+        
+        .comment-meta {
+            color: #6a6a7a;
+            font-size: 12px;
+        }
+        
+        .comment-rating {
+            color: #ffaa00;
+        }
+        
+        .comment-content {
+            color: #d0d0d0;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        
+        .comment-actions {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .comment-action {
+            background: none;
+            border: none;
+            color: #6a6a7a;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: color 0.2s;
+        }
+        
+        .comment-action:hover {
+            color: #00d4ff;
+        }
+        
+        .comment-action.liked {
+            color: #00ff88;
+        }
+        
+        .comment-action.disliked {
+            color: #ff3366;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #00d4ff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #6a6a7a;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: bold;
+            transform: translateX(400px);
+            transition: transform 0.3s;
+            z-index: 2000;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+        }
+        
+        .toast.success { background: #00ff88; color: #000; }
+        .toast.error { background: #ff3366; }
+        .toast.info { background: #00d4ff; color: #000; }
+        
+        /* Modal zdjęcia */
+        .image-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 3000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .image-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 12px;
+        }
+        
+        .image-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            font-size: 40px;
+            color: #fff;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌌 NEBULA</h1>
+        <div>
+            <a href="/admin.html" class="btn btn-secondary">← Powrót do Admin</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Hero Section -->
+        <div class="game-hero" id="gameHero">
+            <div class="loading" style="margin: 100px auto; display: block;"></div>
+        </div>
+        
+        <!-- Screenshots -->
+        <div class="screenshots-section" id="screenshotsSection" style="display: none;">
+            <h2 class="section-title">📸 Screenshoty</h2>
+            <div class="screenshots-grid" id="screenshotsGrid"></div>
+        </div>
+        
+        <!-- Wymagania -->
+        <div class="requirements-section" id="requirementsSection" style="display: none;">
+            <h2 class="section-title">🖥️ Wymagania Systemowe</h2>
+            <div class="req-grid" id="requirementsGrid"></div>
+        </div>
+        
+        <!-- Rating -->
+        <div class="rating-section" id="ratingSection" style="display: none;">
+            <h2 class="section-title">⭐ Oceny</h2>
+            <div class="rating-summary">
+                <div class="rating-big">
+                    <div class="rating-number" id="avgRating">0.0</div>
+                    <div class="rating-stars" id="avgStars">★★★★★</div>
+                    <div class="rating-count" id="totalRatings">0 ocen</div>
+                </div>
+                <div class="rating-bars" id="ratingBars"></div>
+                <div class="your-rating" id="yourRatingSection">
+                    <h4>Twoja ocena</h4>
+                    <div class="star-input" id="starInput">
+                        <span data-rating="1">★</span>
+                        <span data-rating="2">★</span>
+                        <span data-rating="3">★</span>
+                        <span data-rating="4">★</span>
+                        <span data-rating="5">★</span>
+                    </div>
+                    <div id="yourRatingText" style="margin-top: 10px; color: #6a6a7a; font-size: 14px;">Kliknij aby ocenić</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Komentarze -->
+        <div class="comments-section">
+            <h2 class="section-title">💬 Komentarze</h2>
+            
+            <div id="commentAuthSection">
+                <!-- Tutaj będzie formularz lub prompt logowania -->
+            </div>
+            
+            <div class="comment-list" id="commentsList">
+                <div class="loading" style="margin: 20px auto; display: block;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal zdjęcia -->
+    <div class="image-modal" id="imageModal" onclick="closeImageModal()">
+        <span class="image-modal-close">&times;</span>
+        <img src="" alt="Screenshot" id="modalImage">
+    </div>
+    
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API_URL = window.location.origin;
+        
+        // Pobierz ID gry z URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameId = urlParams.get('id');
+        const guildId = urlParams.get('guildId') || '';
+        
+        let currentGame = null;
+        let currentUser = null;
+        let comments = [];
+        
+        // Sprawdź czy użytkownik jest zalogowany
+        function checkAuth() {
+            const token = localStorage.getItem('nebula_token');
+            const username = localStorage.getItem('nebula_username');
+            
+            if (token && username) {
+                currentUser = { token, username };
+                return true;
+            }
+            return false;
+        }
+        
+        async function loadGame() {
+            if (!gameId) {
+                document.getElementById('gameHero').innerHTML = `
+                    <div class="empty-state">
+                        <h3>❌ Nie podano ID gry</h3>
+                        <p>Dodaj ?id=GAME_ID do adresu URL</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/games/${gameId}?guildId=${guildId}`);
+                if (!response.ok) throw new Error('Game not found');
+                
+                currentGame = await response.json();
+                renderGame();
+                loadScreenshots();
+                loadRequirements();
+                loadRatings();
+                loadComments();
+                
+            } catch (error) {
+                console.error('Błąd ładowania gry:', error);
+                document.getElementById('gameHero').innerHTML = `
+                    <div class="empty-state">
+                        <h3>❌ Nie znaleziono gry</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function renderGame() {
+            const hero = document.getElementById('gameHero');
+            const isFree = currentGame.price === 0;
+            
+            let iconHtml;
+            if (currentGame.iconUrl) {
+                iconHtml = `<img src="${currentGame.iconUrl}" alt="${currentGame.name}">`;
+            } else {
+                iconHtml = `<div class="emoji-icon">${currentGame.icon || '🎮'}</div>`;
+            }
+            
+            hero.innerHTML = `
+                <div class="game-banner" style="background: ${currentGame.color || '#00d4ff'}30;">
+                    ${iconHtml}
+                </div>
+                <div class="game-info">
+                    <h1 class="game-title">${currentGame.name}</h1>
+                    <div class="game-meta">
+                        <span>👤 ${currentGame.developer || 'Unknown'}</span>
+                        <span>📅 ${currentGame.releaseDate || 'Brak daty'}</span>
+                        <span>🎮 ${currentGame.genre || 'Nieznany gatunek'}</span>
+                        <span>💾 ${currentGame.size ? currentGame.size + ' GB' : 'N/A'}</span>
+                        <span style="color: ${isFree ? '#00ff88' : '#ffaa00'}; font-weight: bold;">
+                            ${isFree ? 'DARMOWE' : currentGame.price + ' zł'}
+                        </span>
+                    </div>
+                    <div class="game-description">
+                        ${currentGame.description || 'Brak opisu'}
+                    </div>
+                    <div class="game-actions">
+                        ${currentGame.download_url ? 
+                            `<a href="${currentGame.download_url}" target="_blank" class="btn btn-success">⬇️ Pobierz</a>` : 
+                            `<button class="btn btn-success" disabled>Brak linku</button>`
+                        }
+                        <span class="btn btn-secondary">PEGI ${currentGame.pegi || 12}</span>
+                        <span class="btn btn-secondary">v${currentGame.version || '1.0'}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function loadScreenshots() {
+            const screenshots = currentGame.screenshots || [];
+            if (screenshots.length === 0) return;
+            
+            document.getElementById('screenshotsSection').style.display = 'block';
+            const grid = document.getElementById('screenshotsGrid');
+            
+            grid.innerHTML = screenshots.map((url, index) => `
+                <div class="screenshot-item" onclick="openImageModal('${url}')">
+                    <img src="${url}" alt="Screenshot ${index + 
