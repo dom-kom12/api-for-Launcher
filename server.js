@@ -147,7 +147,6 @@ app.get('/admin.html', async (req, res) => {
     }
 });
 
-// Nowa podstrona game.html
 app.get('/game.html', async (req, res) => {
     try {
         const gamePath = path.join(__dirname, 'game.html');
@@ -156,6 +155,56 @@ app.get('/game.html', async (req, res) => {
         res.send(html);
     } catch (error) {
         res.status(500).send(`Błąd: ${error.message}`);
+    }
+});
+
+app.get('/login.html', async (req, res) => {
+    try {
+        const loginPath = path.join(__dirname, 'login.html');
+        const html = await fs.readFile(loginPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (error) {
+        res.status(500).send(`Błąd: ${error.message}`);
+    }
+});
+
+app.get('/friends.html', async (req, res) => {
+    try {
+        const friendsPath = path.join(__dirname, 'friends.html');
+        const html = await fs.readFile(friendsPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (error) {
+        res.status(500).send(`Błąd: ${error.message}`);
+    }
+});
+
+app.get('/library.html', async (req, res) => {
+    try {
+        const libraryPath = path.join(__dirname, 'library.html');
+        const html = await fs.readFile(libraryPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (error) {
+        res.status(500).send(`Błąd: ${error.message}`);
+    }
+});
+
+// Strona główna (opcjonalnie, jeśli masz index.html)
+app.get('/', async (req, res) => {
+    try {
+        const indexPath = path.join(__dirname, 'index.html');
+        const html = await fs.readFile(indexPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (error) {
+        // Jeśli nie ma index.html, zwróć JSON z informacją
+        res.json({ 
+            message: 'Nebula Game Server',
+            status: 'online',
+            endpoints: ['/games', '/login.html', '/library.html', '/friends.html', '/game.html']
+        });
     }
 });
 
@@ -204,16 +253,6 @@ app.get('/health', async (req, res) => {
     }
     
     res.json(response);
-});
-
-app.get('/', (req, res) => {
-    res.json({ 
-        message: 'Nebula Game Server - Multi-Guild with Images',
-        status: discordReady ? 'online' : 'booting',
-        uptime: process.uptime(),
-        guilds: ALLOWED_GUILDS.length,
-        features: ['icons', 'screenshots', 'comments', 'ratings']
-    });
 });
 
 function requireDiscordForWrite(req, res, next) {
