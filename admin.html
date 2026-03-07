@@ -39,6 +39,16 @@
             font-size: 14px;
             margin-top: 5px;
         }
+
+        .guild-selector {
+            background: #16161f;
+            border: 1px solid #2a2a3a;
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
         
         .btn {
             padding: 12px 24px;
@@ -89,6 +99,11 @@
         .btn-secondary:hover {
             background: #3a3a4a;
         }
+
+        .btn-icon {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
         
         .container {
             max-width: 1400px;
@@ -96,24 +111,6 @@
             padding: 30px;
         }
 
-        .setup-warning {
-            background: #ffaa0020;
-            border: 1px solid #ffaa00;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 30px;
-            display: none;
-        }
-
-        .setup-warning.active {
-            display: block;
-        }
-
-        .setup-warning h3 {
-            color: #ffaa00;
-            margin-bottom: 10px;
-        }
-        
         .toolbar {
             display: flex;
             gap: 15px;
@@ -135,7 +132,7 @@
         
         .games-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
             gap: 20px;
         }
         
@@ -153,7 +150,7 @@
         }
         
         .game-header {
-            height: 100px;
+            height: 120px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -219,6 +216,42 @@
             overflow: hidden;
         }
 
+        .screenshots-preview {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            overflow-x: auto;
+        }
+
+        .screenshot-thumb {
+            width: 80px;
+            height: 45px;
+            background: #0a0a0f;
+            border-radius: 4px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #2a2a3a;
+        }
+
+        .screenshot-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .screenshot-count {
+            background: #00d4ff;
+            color: #000;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+        
         .game-requirements {
             background: #0a0a0f;
             border-radius: 8px;
@@ -302,7 +335,7 @@
             border: 1px solid #2a2a3a;
             border-radius: 16px;
             width: 90%;
-            max-width: 700px;
+            max-width: 800px;
             max-height: 90vh;
             overflow-y: auto;
             margin: 20px 0;
@@ -389,6 +422,12 @@
             grid-template-columns: 1fr 1fr 1fr;
             gap: 15px;
         }
+
+        .form-row-4 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 15px;
+        }
         
         .empty-state {
             text-align: center;
@@ -446,6 +485,79 @@
             to { transform: rotate(360deg); }
         }
 
+        .screenshots-section {
+            background: #0a0a0f;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .screenshots-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .screenshot-item {
+            position: relative;
+            width: 120px;
+            height: 67px;
+            background: #16161f;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #2a2a3a;
+        }
+
+        .screenshot-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .screenshot-item .remove-btn {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background: #ff3366;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .screenshot-item:hover .remove-btn {
+            opacity: 1;
+        }
+
+        .add-screenshot-btn {
+            width: 120px;
+            height: 67px;
+            background: #16161f;
+            border: 2px dashed #2a2a3a;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #6a6a7a;
+            font-size: 24px;
+            transition: all 0.2s;
+        }
+
+        .add-screenshot-btn:hover {
+            border-color: #00d4ff;
+            color: #00d4ff;
+        }
+
+        .screenshot-input {
+            display: none;
+        }
+
         .compat-check {
             background: #1a1a2e;
             border: 1px solid #2a2a3a;
@@ -501,6 +613,9 @@
             <div class="guild-info" id="guildInfo">Ładowanie...</div>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
+            <select class="guild-selector" id="guildSelector" onchange="changeGuild()">
+                <option value="">Wybierz serwer...</option>
+            </select>
             <button class="btn btn-secondary" onclick="checkCompatibility()">🖥️ Sprawdź PC</button>
             <button class="btn btn-primary" onclick="openModal()">➕ Dodaj Grę</button>
         </div>
@@ -550,7 +665,7 @@
                         </div>
                     </div>
                     
-                    <div class="form-row-3">
+                    <div class="form-row-4">
                         <div class="form-group">
                             <label>Cena (zł)</label>
                             <input type="number" id="inputPrice" step="0.01" value="0" min="0">
@@ -568,6 +683,32 @@
                         <div class="form-group">
                             <label>Rozmiar (GB)</label>
                             <input type="number" id="inputSize" step="0.1" min="0" placeholder="np. 15.5">
+                        </div>
+                        <div class="form-group">
+                            <label>Wersja</label>
+                            <input type="text" id="inputVersion" placeholder="1.0">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Gatunek</label>
+                            <input type="text" id="inputGenre" placeholder="Akcja, RPG, Strategia...">
+                        </div>
+                        <div class="form-group">
+                            <label>Data premiery</label>
+                            <input type="date" id="inputReleaseDate">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Wydawca</label>
+                            <input type="text" id="inputPublisher" placeholder="Nazwa wydawcy">
+                        </div>
+                        <div class="form-group">
+                            <label>Język</label>
+                            <input type="text" id="inputLanguage" placeholder="Polski, Angielski...">
                         </div>
                     </div>
                     
@@ -592,6 +733,21 @@
                         <textarea id="inputDesc" rows="3" placeholder="Krótki opis gry..."></textarea>
                     </div>
 
+                    <!-- Screenshoty -->
+                    <div class="section-title">📸 Screenshoty</div>
+                    <div class="screenshots-section">
+                        <div class="form-group">
+                            <label>URL Screenshota</label>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="url" id="screenshotUrl" placeholder="https://..." style="flex: 1;">
+                                <button type="button" class="btn btn-secondary" onclick="addScreenshot()">Dodaj</button>
+                            </div>
+                        </div>
+                        <div class="screenshots-list" id="screenshotsList">
+                            <!-- Tutaj będą screenshoty -->
+                        </div>
+                    </div>
+
                     <div class="section-title">Wymagania Minimalne</div>
                     
                     <div class="form-row">
@@ -605,7 +761,7 @@
                         </div>
                     </div>
                     
-                    <div class="form-row-3">
+                    <div class="form-row-4">
                         <div class="form-group">
                             <label>RAM</label>
                             <input type="text" id="reqMinRam" placeholder="8 GB">
@@ -614,7 +770,7 @@
                             <label>Karta graficzna</label>
                             <input type="text" id="reqMinGpu" placeholder="GTX 1050">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="grid-column: span 2;">
                             <label>Dysk</label>
                             <input type="text" id="reqMinStorage" placeholder="20 GB">
                         </div>
@@ -633,7 +789,7 @@
                         </div>
                     </div>
                     
-                    <div class="form-row-3">
+                    <div class="form-row-4">
                         <div class="form-group">
                             <label>RAM</label>
                             <input type="text" id="reqRecRam" placeholder="16 GB">
@@ -642,7 +798,7 @@
                             <label>Karta graficzna</label>
                             <input type="text" id="reqRecGpu" placeholder="RTX 3060">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="grid-column: span 2;">
                             <label>Dysk</label>
                             <input type="text" id="reqRecStorage" placeholder="20 GB SSD">
                         </div>
@@ -663,16 +819,66 @@
         
         let games = [];
         let editingId = null;
-        let userPC = null; // Konfiguracja PC użytkownika
+        let userPC = null;
+        let currentGuildId = '';
+        let currentScreenshots = [];
 
         // Inicjalizacja
-        loadGames();
+        init();
+
+        async function init() {
+            await loadGuilds();
+            await loadGames();
+        }
+
+        async function loadGuilds() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                
+                const selector = document.getElementById('guildSelector');
+                selector.innerHTML = '<option value="">Wybierz serwer...</option>';
+                
+                if (data.guildsReady && data.guildsReady.length > 0) {
+                    data.guildsReady.forEach(guild => {
+                        const option = document.createElement('option');
+                        option.value = guild.id;
+                        option.textContent = `${guild.name} (${guild.memberCount} osób)`;
+                        selector.appendChild(option);
+                    });
+                    
+                    // Wybierz pierwszy domyślnie
+                    if (data.guildsReady.length > 0) {
+                        currentGuildId = data.guildsReady[0].id;
+                        selector.value = currentGuildId;
+                    }
+                }
+            } catch (error) {
+                console.error('Błąd ładowania guildów:', error);
+            }
+        }
+
+        function changeGuild() {
+            const selector = document.getElementById('guildSelector');
+            currentGuildId = selector.value;
+            loadGames();
+        }
 
         async function loadGames() {
+            if (!currentGuildId) {
+                document.getElementById('gamesGrid').innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <h3>📂 Wybierz serwer</h3>
+                        <p>Wybierz serwer Discord z listy powyżej, aby zarządzać grami</p>
+                    </div>
+                `;
+                return;
+            }
+
             try {
                 document.getElementById('guildInfo').innerHTML = `<span class="loading"></span> Ładowanie...`;
                 
-                const response = await fetch(`${API_URL}/games`, {
+                const response = await fetch(`${API_URL}/games?guildId=${currentGuildId}`, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -682,7 +888,8 @@
                 const data = await response.json();
                 games = Array.isArray(data) ? data : [];
                 
-                document.getElementById('guildInfo').innerHTML = `Gier w bazie: ${games.length}`;
+                const guildName = document.getElementById('guildSelector').selectedOptions[0]?.text.split('(')[0] || 'Unknown';
+                document.getElementById('guildInfo').innerHTML = `${guildName.trim()} • ${games.length} gier`;
                 renderGames();
                 
             } catch (error) {
@@ -705,18 +912,15 @@
             loadGames();
         }
 
-        // Sprawdzenie kompatybilności PC
         function checkCompatibility() {
-            // Symulacja lub pobranie z localStorage
             const saved = localStorage.getItem('userPCConfig');
             if (saved) {
                 userPC = JSON.parse(saved);
                 showCompatPanel();
-                renderGames(); // Przerenderuj z nowymi danymi
+                renderGames();
                 return;
             }
 
-            // Formularz wprowadzenia configu
             const os = prompt('Twój system operacyjny:', 'Windows 10');
             if (!os) return;
             
@@ -766,18 +970,13 @@
             `;
         }
 
-        // Sprawdź czy PC spełnia wymagania
         function checkGameCompatibility(game) {
             if (!userPC || !game.requirements || !game.requirements.min) {
                 return { compatible: true, reason: 'Brak danych' };
             }
 
             const min = game.requirements.min;
-            
-            // Prosta heurystyka - w produkcji warto użyć biblioteki do porównywania GPU/CPU
             const ramMatch = min.ram ? parseInt(min.ram) <= userPC.ram : true;
-            
-            // Sprawdzenie OS (proste)
             const osMatch = min.os ? 
                 userPC.os.includes(min.os.toLowerCase().split(' ')[0]) || 
                 min.os.toLowerCase().includes(userPC.os.split(' ')[0]) : true;
@@ -788,11 +987,61 @@
             return { compatible: true, reason: 'OK' };
         }
 
+        // Screenshoty
+        function addScreenshot() {
+            const url = document.getElementById('screenshotUrl').value.trim();
+            if (!url) {
+                showToast('Wprowadź URL screenshota', 'error');
+                return;
+            }
+
+            if (!url.match(/^https?:\/\/.+/i)) {
+                showToast('Nieprawidłowy URL', 'error');
+                return;
+            }
+
+            if (currentScreenshots.includes(url)) {
+                showToast('Ten screenshot już istnieje', 'error');
+                return;
+            }
+
+            currentScreenshots.push(url);
+            document.getElementById('screenshotUrl').value = '';
+            renderScreenshots();
+        }
+
+        function removeScreenshot(index) {
+            currentScreenshots.splice(index, 1);
+            renderScreenshots();
+        }
+
+        function renderScreenshots() {
+            const container = document.getElementById('screenshotsList');
+            container.innerHTML = '';
+
+            currentScreenshots.forEach((url, index) => {
+                const item = document.createElement('div');
+                item.className = 'screenshot-item';
+                item.innerHTML = `
+                    <img src="${url}" alt="Screenshot" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%2267%22><text x=%2250%22 y=%2250%22 text-anchor=%22middle%22 fill=%22%23666%22>❌</text></svg>'">
+                    <button type="button" class="remove-btn" onclick="removeScreenshot(${index})">×</button>
+                `;
+                container.appendChild(item);
+            });
+
+            // Przycisk dodawania
+            const addBtn = document.createElement('div');
+            addBtn.className = 'add-screenshot-btn';
+            addBtn.innerHTML = '+';
+            addBtn.onclick = () => document.getElementById('screenshotUrl').focus();
+            container.appendChild(addBtn);
+        }
+
         async function saveGameToServer(gameData) {
             try {
                 const url = editingId 
-                    ? `${API_URL}/api/games/${editingId}` 
-                    : `${API_URL}/api/games`;
+                    ? `${API_URL}/api/games/${editingId}?guildId=${currentGuildId}` 
+                    : `${API_URL}/api/games?guildId=${currentGuildId}`;
                 
                 const method = editingId ? 'PUT' : 'POST';
                 
@@ -828,7 +1077,7 @@
 
         async function deleteGameFromServer(id) {
             try {
-                const response = await fetch(`${API_URL}/api/games/${id}`, {
+                const response = await fetch(`${API_URL}/api/games/${id}?guildId=${currentGuildId}`, {
                     method: 'DELETE',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -853,7 +1102,8 @@
             const filtered = games.filter(game => {
                 const name = (game.name || '').toLowerCase();
                 const dev = (game.developer || '').toLowerCase();
-                return name.includes(search) || dev.includes(search);
+                const genre = (game.genre || '').toLowerCase();
+                return name.includes(search) || dev.includes(search) || genre.includes(search);
             });
             
             if (filtered.length === 0) {
@@ -870,8 +1120,8 @@
                 const isFree = game.price === 0;
                 const size = game.size ? `${game.size} GB` : 'N/A';
                 const compat = checkGameCompatibility(game);
+                const screenshots = game.screenshots || [];
                 
-                // Generuj HTML wymagań
                 let reqHtml = '';
                 if (game.requirements && (game.requirements.min || game.requirements.rec)) {
                     const min = game.requirements.min || {};
@@ -902,7 +1152,21 @@
                     `;
                 }
 
-                // Status kompatybilności
+                // Preview screenshotów
+                let screenshotsHtml = '';
+                if (screenshots.length > 0) {
+                    screenshotsHtml = `
+                        <div class="screenshots-preview">
+                            ${screenshots.slice(0, 3).map(url => `
+                                <div class="screenshot-thumb">
+                                    <img src="${url}" alt="" onerror="this.style.display='none'">
+                                </div>
+                            `).join('')}
+                            ${screenshots.length > 3 ? `<div class="screenshot-thumb" style="background: #00d4ff; color: #000; font-size: 12px; font-weight: bold;">+${screenshots.length - 3}</div>` : ''}
+                        </div>
+                    `;
+                }
+
                 let compatBadge = '';
                 if (userPC) {
                     if (compat.compatible) {
@@ -922,19 +1186,21 @@
                     </div>
                     <div class="game-body">
                         <div class="game-title">${game.name} ${compatBadge}</div>
-                        <div class="game-dev">${game.developer || 'Unknown'}</div>
+                        <div class="game-dev">${game.developer || 'Unknown'} ${game.genre ? `• ${game.genre}` : ''}</div>
                         <div style="margin-bottom: 10px;">
                             ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
+                            ${screenshots.length > 0 ? `<span class="screenshot-count">📸 ${screenshots.length}</span>` : ''}
                         </div>
                         <div class="game-desc">${game.description || 'Brak opisu'}</div>
+                        ${screenshotsHtml}
                         ${reqHtml}
                         <div class="game-actions">
-                            <button class="btn btn-primary" onclick="editGame('${game.id}')">✏️ Edytuj</button>
+                            <button class="btn btn-primary btn-icon" onclick="editGame('${game.id}')">✏️ Edytuj</button>
                             ${compat.compatible ? 
-                                `<button class="btn btn-success" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
-                                `<button class="btn btn-success" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
+                                `<button class="btn btn-success btn-icon" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
+                                `<button class="btn btn-success btn-icon" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
                             }
-                            <button class="btn btn-danger" onclick="deleteGame('${game.id}')">🗑️</button>
+                            <button class="btn btn-danger btn-icon" onclick="deleteGame('${game.id}')">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -956,7 +1222,13 @@
         }
 
         function openModal(id = null) {
+            if (!currentGuildId) {
+                showToast('Najpier wybierz serwer!', 'error');
+                return;
+            }
+
             editingId = id;
+            currentScreenshots = [];
             document.getElementById('modal').style.display = 'flex';
             document.getElementById('modalTitle').textContent = id ? 'Edytuj Grę' : 'Dodaj Nową Grę';
             
@@ -972,6 +1244,17 @@
                     document.getElementById('inputUrl').value = game.download_url || '';
                     document.getElementById('inputDesc').value = game.description || '';
                     document.getElementById('inputSize').value = game.size || '';
+                    document.getElementById('inputVersion').value = game.version || '';
+                    document.getElementById('inputGenre').value = game.genre || '';
+                    document.getElementById('inputReleaseDate').value = game.releaseDate || '';
+                    document.getElementById('inputPublisher').value = game.publisher || '';
+                    document.getElementById('inputLanguage').value = game.language || '';
+                    
+                    // Screenshoty
+                    if (game.screenshots) {
+                        currentScreenshots = [...game.screenshots];
+                    }
+                    renderScreenshots();
                     
                     // Wymagania
                     if (game.requirements) {
@@ -994,12 +1277,14 @@
             } else {
                 document.getElementById('gameForm').reset();
                 document.getElementById('inputColor').value = '#00d4ff';
+                renderScreenshots();
             }
         }
 
         function closeModal() {
             document.getElementById('modal').style.display = 'none';
             editingId = null;
+            currentScreenshots = [];
         }
 
         async function saveGame(e) {
@@ -1015,6 +1300,12 @@
                 download_url: document.getElementById('inputUrl').value || null,
                 description: document.getElementById('inputDesc').value,
                 size: parseFloat(document.getElementById('inputSize').value) || null,
+                version: document.getElementById('inputVersion').value || '1.0',
+                genre: document.getElementById('inputGenre').value || 'Nieznany',
+                releaseDate: document.getElementById('inputReleaseDate').value || new Date().toISOString().split('T')[0],
+                publisher: document.getElementById('inputPublisher').value || '',
+                language: document.getElementById('inputLanguage').value || 'Polski/Angielski',
+                screenshots: currentScreenshots,
                 requirements: {
                     min: {
                         os: document.getElementById('reqMinOs').value,
@@ -1070,6 +1361,14 @@
             userPC = JSON.parse(savedConfig);
             showCompatPanel();
         }
+
+        // Enter w polu screenshotu
+        document.getElementById('screenshotUrl').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addScreenshot();
+            }
+        });
     </script>
 </body>
 </html>
