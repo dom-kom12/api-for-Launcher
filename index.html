@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nebula - Platforma Gier</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: #fff;
+            line-height: 1.6;
+        }
+
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 250px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .nav-menu {
+            list-style: none;
+            flex: 1;
+        }
+
+        .nav-item {
+            margin-bottom: 10px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            border-radius: 12px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .nav-link i {
+            font-size: 20px;
+            width: 24px;
+            text-align: center;
+        }
+
+        .user-section {
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .user-details {
+            flex: 1;
+        }
+
+        .username {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .user-status {
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        .logout-btn {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 250px;
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        .page {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Auth Page */
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin-left: 0;
+        }
+
+        .auth-box {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .auth-title {
+            font-size: 32px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .auth-subtitle {
+            text-align: center;
+            opacity: 0.7;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .form-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #00d4ff;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            margin-top: 10px;
+        }
+
+        .auth-switch {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .auth-switch a {
+            color: #00d4ff;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        /* Store Page */
+        .page-header {
+            margin-bottom: 30px;
+        }
+
+        .page-title {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 16px;
+        }
+
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+        }
+
+        .game-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            overflow: hidden;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .game-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .game-image {
+            width: 100%;
+            height: 160px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+        }
+
+        .game-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .game-info {
+            padding: 20px;
+        }
+
+        .game-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .game-dev {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-bottom: 10px;
+        }
+
+        .game-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .game-price {
+            font-size: 20px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+
+        .game-rating {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #ffd700;
+        }
+
+        /* Game Detail Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 20px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header {
+            position: relative;
+            height: 300px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .modal-header img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border: none;
+            color: #fff;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-body {
+            padding: 30px;
+        }
+
+        .modal-title {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .modal-meta {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .meta-tag {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .modal-description {
+            margin-bottom: 25px;
+            line-height: 1.8;
+            opacity: 0.9;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #00ff88 0%, #00d4ff 100%);
+        }
+
+        /* Comments Section in Modal */
+        .comments-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .comment-form {
+            margin-bottom: 25px;
+        }
+
+        .comment-textarea {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 15px;
+            border-radius: 12px;
+            resize: vertical;
+            min-height: 80px;
+            margin-bottom: 10px;
+        }
+
+        .comment {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .comment-author {
+            font-weight: 600;
+            color: #00d4ff;
+        }
+
+        .comment-date {
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        /* Library Page */
+        .library-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+        }
+
+        .library-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            gap: 15px;
+            transition: all 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .library-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .library-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            flex-shrink: 0;
+        }
+
+        .library-info {
+            flex: 1;
+        }
+
+        .library-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .library-meta {
+            font-size: 13px;
+            opacity: 0.7;
+            margin-bottom: 10px;
+        }
+
+        .library-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 13px;
+            width: auto;
+        }
+
+        /* Friends Page */
+        .friends-layout {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 30px;
+        }
+
+        .friends-list {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .friend-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            border-radius: 12px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .friend-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .friend-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .friend-info {
+            flex: 1;
+        }
+
+        .friend-name {
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .friend-status {
+            font-size: 13px;
+            opacity: 0.7;
+        }
+
+        .status-online {
+            color: #00ff88;
+        }
+
+        .status-offline {
+            color: #ff4444;
+        }
+
+        .add-friend-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .pending-invites {
+            margin-top: 20px;
+        }
+
+        .invite-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .invite-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-accept {
+            background: #00ff88;
+            color: #000;
+        }
+
+        .btn-decline {
+            background: #ff4444;
+            color: #fff;
+        }
+
+        /* Chat Modal */
+        .chat-modal {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 350px;
+            height: 500px;
+            background: rgba(30, 30, 46, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: none;
+            flex-direction: column;
+            z-index: 999;
+            backdrop-filter: blur(10px);
+        }
+
+        .chat-modal.active {
+            display: flex;
+        }
+
+        .chat-header {
+            padding: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            max-width: 80%;
+        }
+
+        .message.sent {
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .message-bubble {
+            display: inline-block;
+            padding: 10px 15px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.1);
+            word-wrap: break-word;
+        }
+
+        .message.sent .message-bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .chat-input-area {
+            padding: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 20px;
+        }
+
+        /* Rating Stars */
+        .star-rating {
+            display: flex;
+            gap: 5px;
+            font-size: 24px;
+        }
+
+        .star {
+            color: #444;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .star.filled {
+            color: #ffd700;
+        }
+
+        .star:hover {
+            transform: scale(1.2);
+        }
+
+        /* Screenshots Gallery */
+        .screenshots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .screenshot-thumb {
+            aspect-ratio: 16/9;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .screenshot-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s;
+        }
+
+        .screenshot-thumb:hover img {
+            transform: scale(1.1);
+        }
+
+        /* Notifications */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 212, 255, 0.9);
+            color: #000;
+            padding: 15px 25px;
+            border-radius: 12px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease;
+            font-weight: 600;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(400px); }
+            to { transform: translateX(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                position: relative;
+                height: auto;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .app-container {
+                flex-direction: column;
+            }
+
+            .friends-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #00d4ff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            opacity: 0.6;
+        }
+
+        .badge {
+            background: #ff4444;
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Auth View -->
+        <div id="authView" class="auth-container">
+            <div class="auth-box">
+                <h1 class="auth-title">Nebula</h1>
+                <p class="auth-subtitle">Platforma Gier</p>
+                
+                <div id="loginForm">
+                    <div class="form-group">
+                        <label class="form-label">Nazwa użytkownika</label>
+                        <input type="text" class="form-input" id="loginUsername" placeholder="Wpisz nazwę użytkownika">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hasło</label>
+                        <input type="password" class="form-input" id="loginPassword" placeholder="Wpisz hasło">
+                    </div>
+                    <button class="btn" onclick="login()">Zaloguj się</button>
+                    <button class="btn btn-secondary" onclick="showRegister()">Utwórz konto</button>
+                </div>
+
+                <div id="registerForm" class="hidden">
+                    <div class="form-group">
+                        <label class="form-label">Nazwa użytkownika</label>
+                        <input type="text" class="form-input" id="regUsername" placeholder="Wybierz nazwę użytkownika">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-input" id="regEmail" placeholder="Wpisz email">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hasło</label>
+                        <input type="password" class="form-input" id="regPassword" placeholder="Wybierz hasło">
+                    </div>
+                    <button class="btn" onclick="register()">Zarejestruj się</button>
+                    <button class="btn btn-secondary" onclick="showLogin()">Masz już konto? Zaloguj się</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App View -->
+        <div id="mainView" class="app-container hidden">
+            <!-- Sidebar -->
+            <nav class="sidebar">
+                <div class="logo">NEBULA</div>
+                
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a class="nav-link active" onclick="navigate('store')">
+                            <i>🛒</i>
+                            <span>Sklep</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" onclick="navigate('library')">
+                            <i>📚</i>
+                            <span>Biblioteka</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" onclick="navigate('friends')">
+                            <i>👥</i>
+                            <span>Znajomi</span>
+                            <span id="friendsBadge" class="badge hidden">0</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="user-section">
+                    <div class="user-info">
+                        <div class="user-avatar" id="userAvatar">U</div>
+                        <div class="user-details">
+                            <div class="username" id="sidebarUsername">Użytkownik</div>
+                            <div class="user-status">Online</div>
+                        </div>
+                    </div>
+                    <button class="logout-btn" onclick="logout()">Wyloguj się</button>
+                </div>
+            </nav>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Store Page -->
+                <div id="storePage" class="page active">
+                    <div class="page-header">
+                        <h1 class="page-title">Sklep</h1>
+                    </div>
+                    
+                    <div class="search-bar">
+                        <input type="text" class="search-input" id="searchInput" placeholder="Szukaj gier..." oninput="searchGames()">
+                    </div>
+
+                    <div id="gamesContainer" class="games-grid">
+                        <!-- Games loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Library Page -->
+                <div id="libraryPage" class="page">
+                    <div class="page-header">
+                        <h1 class="page-title">Moja Biblioteka</h1>
+                    </div>
+                    
+                    <div id="libraryContainer" class="library-grid">
+                        <!-- Library games loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Friends Page -->
+                <div id="friendsPage" class="page">
+                    <div class="page-header">
+                        <h1 class="page-title">Znajomi</h1>
+                    </div>
+                    
+                    <div class="friends-layout">
+                        <div class="friends-list" id="friendsList">
+                            <!-- Friends loaded dynamically -->
+                        </div>
+
+                        <div class="add-friend-section">
+                            <h3 style="margin-bottom: 15px;">Dodaj znajomego</h3>
+                            <div class="form-group">
+                                <input type="text" class="form-input" id="friendUsername" placeholder="Nazwa użytkownika">
+                            </div>
+                            <button class="btn" onclick="sendFriendRequest()">Wyślij zaproszenie</button>
+
+                            <div class="pending-invites" id="pendingInvites">
+                                <!-- Pending invites loaded dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Game Detail Modal -->
+        <div id="gameModal" class="modal-overlay" onclick="closeModal(event)">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header" id="modalHeader">
+                    <button class="modal-close" onclick="closeGameModal()">&times;</button>
+                </div>
+                <div class="modal-body" id="modalBody">
+                    <!-- Game details loaded dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Modal -->
+        <div id="chatModal" class="chat-modal">
+            <div class="chat-header">
+                <span id="chatWith">Rozmowa</span>
+                <button class="modal-close" onclick="closeChat()" style="position: static; width: 30px; height: 30px;">&times;</button>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-area">
+                <input type="text" class="chat-input" id="chatInput" placeholder="Napisz wiadomość..." onkeypress="handleChatKey(event)">
+                <button class="btn btn-small" onclick="sendMessage()">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_URL = '';
+        let currentUser = null;
+        let currentToken = null;
+        let games = [];
+        let library = [];
+        let friends = [];
+        let currentChatFriend = null;
+        let currentGameId = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+        });
+
+        // Auth Functions
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            const username = localStorage.getItem('username');
+            
+            if (token && username) {
+                try {
+                    const response = await fetch(`${API_URL}/api/auth/verify`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (response.ok) {
+                        currentUser = username;
+                        currentToken = token;
+                        showMainApp();
+                    } else {
+                        showAuth();
+                    }
+                } catch (e) {
+                    showAuth();
+                }
+            } else {
+                showAuth();
+            }
+        }
+
+        function showAuth() {
+            document.getElementById('authView').classList.remove('hidden');
+            document.getElementById('mainView').classList.add('hidden');
+        }
+
+        function showMainApp() {
+            document.getElementById('authView').classList.add('hidden');
+            document.getElementById('mainView').classList.remove('hidden');
+            
+            document.getElementById('sidebarUsername').textContent = currentUser;
+            document.getElementById('userAvatar').textContent = currentUser[0].toUpperCase();
+            
+            loadGames();
+            loadLibrary();
+            loadFriends();
+        }
+
+        function showRegister() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('registerForm').classList.add('hidden');
+            document.getElementById('loginForm').classList.remove('hidden');
+        }
+
+        async function login() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', username);
+                    currentUser = username;
+                    currentToken = data.token;
+                    showMainApp();
+                } else {
+                    showNotification('Błędne dane logowania');
+                }
+            } catch (error) {
+                showNotification('Błąd logowania');
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, email })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', username);
+                    currentUser = username;
+                    currentToken = data.token;
+                    showMainApp();
+                    showNotification('Konto utworzone pomyślnie!');
+                } else {
+                    showNotification(data.error || 'Błąd rejestracji');
+                }
+            } catch (error) {
+                showNotification('Błąd rejestracji');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            currentUser = null;
+            currentToken = null;
+            showAuth();
+        }
+
+        // Navigation
+        function navigate(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            
+            document.getElementById(page + 'Page').classList.add('active');
+            event.target.closest('.nav-link').classList.add('active');
+            
+            if (page === 'library') loadLibrary();
+            if (page === 'friends') loadFriends();
+        }
+
+        // Store Functions
+        async function loadGames() {
+            try {
+                const response = await fetch(`${API_URL}/games`);
+                games = await response.json();
+                renderGames(games);
+            } catch (error) {
+                console.error('Error loading games:', error);
+            }
+        }
+
+        function renderGames(gamesToRender) {
+            const container = document.getElementById('gamesContainer');
+            
+            if (gamesToRender.length === 0) {
+                container.innerHTML = '<div class="empty-state">Brak gier do wyświetlenia</div>';
+                return;
+            }
+            
+            container.innerHTML = gamesToRender.map(game => `
+                <div class="game-card" onclick="openGameModal('${game.id}')">
+                    <div class="game-image">
+                        ${game.iconUrl ? `<img src="${game.iconUrl}" alt="${game.name}">` : (game.icon || '🎮')}
+                    </div>
+                    <div class="game-info">
+                        <div class="game-title">${game.name}</div>
+                        <div class="game-dev">${game.developer || 'Nieznany'}</div>
+                        <div class="game-footer">
+                            <div class="game-price">${game.price === 0 ? 'DARMOWE' : game.price + 'zł'}</div>
+                            <div class="game-rating">★ ${game.rating || '0.0'}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function searchGames() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = games.filter(g => 
+                g.name.toLowerCase().includes(query) || 
+                (g.developer && g.developer.toLowerCase().includes(query))
+            );
+            renderGames(filtered);
+        }
+
+        // Game Modal
+        async function openGameModal(gameId) {
+            currentGameId = gameId;
+            const game = games.find(g => g.id === gameId);
+            if (!game) return;
+            
+            const modal = document.getElementById('gameModal');
+            const body = document.getElementById('modalBody');
+            
+            // Check if in library
+            const inLibrary = library.some(l => l.gameId === gameId);
+            
+            body.innerHTML = `
+                <h2 class="modal-title">${game.name}</h2>
+                <div class="modal-meta">
+                    <span class="meta-tag">🎯 ${game.genre || 'Nieznany'}</span>
+                    <span class="meta-tag">👨‍💻 ${game.developer || 'Nieznany'}</span>
+                    <span class="meta-tag">💰 ${game.price === 0 ? 'DARMOWE' : game.price + 'zł'}</span>
+                    <span class="meta-tag">🔞 PEGI ${game.pegi || '?'}</span>
+                </div>
+                
+                <div class="star-rating" id="gameRating">
+                    ${[1,2,3,4,5].map(i => `<span class="star" onclick="rateGame(${i})">★</span>`).join('')}
+                </div>
+                
+                <p class="modal-description">${game.description || 'Brak opisu'}</p>
+                
+                <div class="modal-actions">
+                    ${inLibrary ? 
+                        `<button class="btn btn-success" onclick="downloadGame('${gameId}')">⬇️ Pobierz</button>` :
+                        `<button class="btn btn-primary" onclick="addToLibrary('${gameId}')">🛒 Dodaj do biblioteki</button>`
+                    }
+                </div>
+
+                <div class="screenshots-grid" id="modalScreenshots"></div>
+                
+                <div class="comments-section">
+                    <h3>Komentarze</h3>
+                    <div class="comment-form">
+                        <textarea class="comment-textarea" id="commentText" placeholder="Napisz komentarz..."></textarea>
+                        <button class="btn btn-small" onclick="addComment()">Dodaj komentarz</button>
+                    </div>
+                    <div id="commentsList"></div>
+                </div>
+            `;
+            
+            modal.classList.add('active');
+            loadGameDetails(gameId);
+        }
+
+        async function loadGameDetails(gameId) {
+            // Load screenshots
+            try {
+                const response = await fetch(`${API_URL}/api/screenshots/${gameId}`);
+                const data = await response.json();
+                const container = document.getElementById('modalScreenshots');
+                if (data.screenshots.length > 0) {
+                    container.innerHTML = data.screenshots.map(s => `
+                        <div class="screenshot-thumb">
+                            <img src="${s.url}" onclick="window.open('${s.url}')">
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {}
+            
+            // Load comments
+            loadComments(gameId);
+            
+            // Load ratings
+            loadGameRating(gameId);
+        }
+
+        async function loadComments(gameId) {
+            try {
+                const response = await fetch(`${API_URL}/api/games/${gameId}/comments`);
+                const data = await response.json();
+                
+                const container = document.getElementById('commentsList');
+                container.innerHTML = data.comments.map(c => `
+                    <div class="comment">
+                        <div class="comment-header">
+                            <span class="comment-author">${c.username}</span>
+                            <span class="comment-date">${new Date(c.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        ${c.rating ? '<div style="color: #ffd700">★'.repeat(c.rating) + '</div>' : ''}
+                        <div>${c.content}</div>
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function addComment() {
+            const content = document.getElementById('commentText').value;
+            if (!content) return;
+            
+            try {
+                await fetch(`${API_URL}/api/games/${currentGameId}/comments`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({
+                        username: currentUser,
+                        content: content
+                    })
+                });
+                
+                document.getElementById('commentText').value = '';
+                loadComments(currentGameId);
+                showNotification('Komentarz dodany!');
+            } catch (e) {
+                showNotification('Błąd dodawania komentarza');
+            }
+        }
+
+        async function loadGameRating(gameId) {
+            try {
+                const response = await fetch(`${API_URL}/api/games/${gameId}/ratings?username=${currentUser}`);
+                const data = await response.json();
+                
+                if (data.yourRating) {
+                    const stars = document.querySelectorAll('#gameRating .star');
+                    stars.forEach((s, i) => {
+                        if (i < data.yourRating) s.classList.add('filled');
+                    });
+                }
+            } catch (e) {}
+        }
+
+        async function rateGame(rating) {
+            try {
+                await fetch(`${API_URL}/api/games/${currentGameId}/rate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({
+                        username: currentUser,
+                        rating: rating
+                    })
+                });
+                
+                showNotification(`Oceniono na ${rating} gwiazdek!`);
+                loadGames();
+            } catch (e) {
+                showNotification('Błąd oceniania');
+            }
+        }
+
+        function closeGameModal() {
+            document.getElementById('gameModal').classList.remove('active');
+            currentGameId = null;
+        }
+
+        function closeModal(e) {
+            if (e.target === e.currentTarget) {
+                closeGameModal();
+            }
+        }
+
+        // Library Functions
+        async function loadLibrary() {
+            try {
+                const response = await fetch(`${API_URL}/api/users/${currentUser}/library`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                library = await response.json();
+                renderLibrary();
+            } catch (error) {
+                console.error('Error loading library:', error);
+            }
+        }
+
+        function renderLibrary() {
+            const container = document.getElementById('libraryContainer');
+            
+            if (library.length === 0) {
+                container.innerHTML = '<div class="empty-state">Twoja biblioteka jest pusta. Przejdź do sklepu!</div>';
+                return;
+            }
+            
+            container.innerHTML = library.map(item => {
+                const game = item.gameDetails || {};
+                return `
+                    <div class="library-card">
+                        <div class="library-icon">
+                            ${game.iconUrl ? `<img src="${game.iconUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">` : (game.icon || '🎮')}
+                        </div>
+                        <div class="library-info">
+                            <div class="library-title">${game.name || 'Unknown'}</div>
+                            <div class="library-meta">
+                                Dodano: ${new Date(item.addedAt).toLocaleDateString()} | 
+                                ${item.installed ? 'Zainstalowano' : 'Nie zainstalowano'}
+                            </div>
+                            <div class="library-actions">
+                                ${game.download_url ? `<button class="btn btn-small" onclick="downloadGame('${item.gameId}')">⬇️ Pobierz</button>` : ''}
+                                <button class="btn btn-small btn-secondary" onclick="removeFromLibrary('${item.gameId}')">🗑️ Usuń</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function addToLibrary(gameId) {
+            try {
+                await fetch(`${API_URL}/api/users/${currentUser}/library`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({ gameId })
+                });
+                
+                showNotification('Dodano do biblioteki!');
+                loadLibrary();
+                closeGameModal();
+            } catch (e) {
+                showNotification('Błąd dodawania do biblioteki');
+            }
+        }
+
+        async function removeFromLibrary(gameId) {
+            if (!confirm('Czy na pewno chcesz usunąć tę grę z biblioteki?')) return;
+            
+            try {
+                await fetch(`${API_URL}/api/users/${currentUser}/library/${gameId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                
+                showNotification('Usunięto z biblioteki');
+                loadLibrary();
+            } catch (e) {
+                showNotification('Błąd usuwania');
+            }
+        }
+
+        function downloadGame(gameId) {
+            const game = games.find(g => g.id === gameId) || library.find(l => l.gameId === gameId)?.gameDetails;
+            if (game && game.download_url) {
+                window.open(game.download_url, '_blank');
+            } else {
+                showNotification('Link do pobrania niedostępny');
+            }
+        }
+
+        // Friends Functions
+        async function loadFriends() {
+            try {
+                const response = await fetch(`${API_URL}/api/friends/${currentUser}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                const data = await response.json();
+                
+                friends = data.friends || [];
+                renderFriends(data.friends || [], data.pendingInvites || []);
+                
+                // Update badge
+                const badge = document.getElementById('friendsBadge');
+                if (data.pendingInvites && data.pendingInvites.length > 0) {
+                    badge.textContent = data.pendingInvites.length;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error loading friends:', error);
+            }
+        }
+
+        function renderFriends(friendsList, pending) {
+            const container = document.getElementById('friendsList');
+            
+            let html = '<h3 style="margin-bottom: 15px;">Twoi znajomi</h3>';
+            
+            if (friendsList.length === 0) {
+                html += '<div class="empty-state">Nie masz jeszcze znajomych</div>';
+            } else {
+                html += friendsList.map(f => `
+                    <div class="friend-item" onclick="openChat('${f.username}')">
+                        <div class="friend-avatar">${f.username[0].toUpperCase()}</div>
+                        <div class="friend-info">
+                            <div class="friend-name">${f.username}</div>
+                            <div class="friend-status ${f.status === 'online' ? 'status-online' : 'status-offline'}">
+                                ${f.status === 'online' ? '🟢 Online' : '🔴 Offline'}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            container.innerHTML = html;
+            
+            // Render pending invites
+            const pendingContainer = document.getElementById('pendingInvites');
+            if (pending.length > 0) {
+                pendingContainer.innerHTML = `
+                    <h3 style="margin: 20px 0 15px;">Oczekujące zaproszenia</h3>
+                    ${pending.map(p => `
+                        <div class="invite-item">
+                            <span>${p.from}</span>
+                            <div class="invite-actions">
+                                <button class="btn-icon btn-accept" onclick="respondInvite('${p.from}', true)">✓</button>
+                                <button class="btn-icon btn-decline" onclick="respondInvite('${p.from}', false)">✕</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                `;
+            } else {
+                pendingContainer.innerHTML = '';
+            }
+        }
+
+        async function sendFriendRequest() {
+            const username = document.getElementById('friendUsername').value;
+            if (!username || username === currentUser) return;
+            
+            try {
+                await fetch(`${API_URL}/api/friends/add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({ fromUser: currentUser, toUser: username })
+                });
+                
+                showNotification('Zaproszenie wysłane!');
+                document.getElementById('friendUsername').value = '';
+            } catch (e) {
+                showNotification('Błąd wysyłania zaproszenia');
+            }
+        }
+
+        async function respondInvite(fromUser, accept) {
+            try {
+                await fetch(`${API_URL}/api/friends/respond`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({ username: currentUser, fromUser, accept })
+                });
+                
+                showNotification(accept ? 'Dodano znajomego!' : 'Odrzucono zaproszenie');
+                loadFriends();
+            } catch (e) {
+                showNotification('Błąd odpowiadania na zaproszenie');
+            }
+        }
+
+        // Chat Functions
+        async function openChat(friendUsername) {
+            currentChatFriend = friendUsername;
+            document.getElementById('chatWith').textContent = `Rozmowa z ${friendUsername}`;
+            document.getElementById('chatModal').classList.add('active');
+            await loadChat();
+        }
+
+        async function loadChat() {
+            if (!currentChatFriend) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/chat/${currentUser}/${currentChatFriend}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                const data = await response.json();
+                
+                const container = document.getElementById('chatMessages');
+                container.innerHTML = (data.messages || []).map(m => `
+                    <div class="message ${m.sender === currentUser ? 'sent' : ''}">
+                        <div class="message-bubble">${m.content}</div>
+                        <div style="font-size: 11px; opacity: 0.6; margin-top: 3px;">
+                            ${new Date(m.timestamp).toLocaleTimeString()}
+                        </div>
+                    </div>
+                `).join('');
+                
+                container.scrollTop = container.scrollHeight;
+            } catch (e) {}
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const content = input.value.trim();
+            if (!content || !currentChatFriend) return;
+            
+            try {
+                await fetch(`${API_URL}/api/chat/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({
+                        fromUser: currentUser,
+                        toUser: currentChatFriend,
+                        content
+                    })
+                });
+                
+                input.value = '';
+                loadChat();
+            } catch (e) {
+                showNotification('Błąd wysyłania wiadomości');
+            }
+        }
+
+        function handleChatKey(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function closeChat() {
+            document.getElementById('chatModal').classList.remove('active');
+            currentChatFriend = null;
+        }
+
+        // Utility
+        function showNotification(message) {
+            const div = document.createElement('div');
+            div.className = 'notification';
+            div.textContent = message;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 3000);
+        }
+
+        // Close modals on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeGameModal();
+                closeChat();
+            }
+        });
+    </script>
+</body>
+</html>
