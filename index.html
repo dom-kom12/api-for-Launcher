@@ -67,6 +67,10 @@
             border-radius: 12px;
             transition: all 0.3s;
             cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            font-size: 16px;
         }
 
         .nav-link:hover, .nav-link.active {
@@ -738,6 +742,7 @@
             display: flex;
             gap: 5px;
             font-size: 24px;
+            margin-bottom: 15px;
         }
 
         .star {
@@ -874,8 +879,8 @@
                         <label class="form-label">Hasło</label>
                         <input type="password" class="form-input" id="loginPassword" placeholder="Wpisz hasło">
                     </div>
-                    <button class="btn" onclick="login()">Zaloguj się</button>
-                    <button class="btn btn-secondary" onclick="showRegister()">Utwórz konto</button>
+                    <button class="btn" id="loginBtn">Zaloguj się</button>
+                    <button class="btn btn-secondary" id="showRegisterBtn">Utwórz konto</button>
                 </div>
 
                 <div id="registerForm" class="hidden">
@@ -891,8 +896,8 @@
                         <label class="form-label">Hasło</label>
                         <input type="password" class="form-input" id="regPassword" placeholder="Wybierz hasło">
                     </div>
-                    <button class="btn" onclick="register()">Zarejestruj się</button>
-                    <button class="btn btn-secondary" onclick="showLogin()">Masz już konto? Zaloguj się</button>
+                    <button class="btn" id="registerBtn">Zarejestruj się</button>
+                    <button class="btn btn-secondary" id="showLoginBtn">Masz już konto? Zaloguj się</button>
                 </div>
             </div>
         </div>
@@ -905,23 +910,23 @@
                 
                 <ul class="nav-menu">
                     <li class="nav-item">
-                        <a class="nav-link active" onclick="navigate('store')">
+                        <button class="nav-link active" data-page="store">
                             <i>🛒</i>
                             <span>Sklep</span>
-                        </a>
+                        </button>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" onclick="navigate('library')">
+                        <button class="nav-link" data-page="library">
                             <i>📚</i>
                             <span>Biblioteka</span>
-                        </a>
+                        </button>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" onclick="navigate('friends')">
+                        <button class="nav-link" data-page="friends">
                             <i>👥</i>
                             <span>Znajomi</span>
                             <span id="friendsBadge" class="badge hidden">0</span>
-                        </a>
+                        </button>
                     </li>
                 </ul>
 
@@ -933,7 +938,7 @@
                             <div class="user-status">Online</div>
                         </div>
                     </div>
-                    <button class="logout-btn" onclick="logout()">Wyloguj się</button>
+                    <button class="logout-btn" id="logoutBtn">Wyloguj się</button>
                 </div>
             </nav>
 
@@ -946,11 +951,11 @@
                     </div>
                     
                     <div class="search-bar">
-                        <input type="text" class="search-input" id="searchInput" placeholder="Szukaj gier..." oninput="searchGames()">
+                        <input type="text" class="search-input" id="searchInput" placeholder="Szukaj gier...">
                     </div>
 
                     <div id="gamesContainer" class="games-grid">
-                        <!-- Games loaded dynamically -->
+                        <div class="spinner"></div>
                     </div>
                 </div>
 
@@ -961,7 +966,7 @@
                     </div>
                     
                     <div id="libraryContainer" class="library-grid">
-                        <!-- Library games loaded dynamically -->
+                        <div class="spinner"></div>
                     </div>
                 </div>
 
@@ -973,7 +978,7 @@
                     
                     <div class="friends-layout">
                         <div class="friends-list" id="friendsList">
-                            <!-- Friends loaded dynamically -->
+                            <div class="spinner"></div>
                         </div>
 
                         <div class="add-friend-section">
@@ -981,11 +986,9 @@
                             <div class="form-group">
                                 <input type="text" class="form-input" id="friendUsername" placeholder="Nazwa użytkownika">
                             </div>
-                            <button class="btn" onclick="sendFriendRequest()">Wyślij zaproszenie</button>
+                            <button class="btn" id="addFriendBtn">Wyślij zaproszenie</button>
 
-                            <div class="pending-invites" id="pendingInvites">
-                                <!-- Pending invites loaded dynamically -->
-                            </div>
+                            <div class="pending-invites" id="pendingInvites"></div>
                         </div>
                     </div>
                 </div>
@@ -993,14 +996,12 @@
         </div>
 
         <!-- Game Detail Modal -->
-        <div id="gameModal" class="modal-overlay" onclick="closeModal(event)">
-            <div class="modal-content" onclick="event.stopPropagation()">
+        <div id="gameModal" class="modal-overlay">
+            <div class="modal-content">
                 <div class="modal-header" id="modalHeader">
-                    <button class="modal-close" onclick="closeGameModal()">&times;</button>
+                    <button class="modal-close" id="closeModalBtn">&times;</button>
                 </div>
-                <div class="modal-body" id="modalBody">
-                    <!-- Game details loaded dynamically -->
-                </div>
+                <div class="modal-body" id="modalBody"></div>
             </div>
         </div>
 
@@ -1008,12 +1009,12 @@
         <div id="chatModal" class="chat-modal">
             <div class="chat-header">
                 <span id="chatWith">Rozmowa</span>
-                <button class="modal-close" onclick="closeChat()" style="position: static; width: 30px; height: 30px;">&times;</button>
+                <button class="modal-close" id="closeChatBtn" style="position: static; width: 30px; height: 30px;">&times;</button>
             </div>
             <div class="chat-messages" id="chatMessages"></div>
             <div class="chat-input-area">
-                <input type="text" class="chat-input" id="chatInput" placeholder="Napisz wiadomość..." onkeypress="handleChatKey(event)">
-                <button class="btn btn-small" onclick="sendMessage()">➤</button>
+                <input type="text" class="chat-input" id="chatInput" placeholder="Napisz wiadomość...">
+                <button class="btn btn-small" id="sendMsgBtn">➤</button>
             </div>
         </div>
     </div>
@@ -1030,9 +1031,46 @@
         let currentGameId = null;
 
         // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', function() {
             checkAuth();
+            setupEventListeners();
         });
+
+        function setupEventListeners() {
+            // Auth buttons
+            document.getElementById('loginBtn').addEventListener('click', login);
+            document.getElementById('showRegisterBtn').addEventListener('click', showRegister);
+            document.getElementById('registerBtn').addEventListener('click', register);
+            document.getElementById('showLoginBtn').addEventListener('click', showLogin);
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            
+            // Navigation
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', function() {
+                    const page = this.getAttribute('data-page');
+                    navigate(page);
+                });
+            });
+            
+            // Search
+            document.getElementById('searchInput').addEventListener('input', searchGames);
+            
+            // Modal
+            document.getElementById('closeModalBtn').addEventListener('click', closeGameModal);
+            document.getElementById('gameModal').addEventListener('click', function(e) {
+                if (e.target === this) closeGameModal();
+            });
+            
+            // Chat
+            document.getElementById('closeChatBtn').addEventListener('click', closeChat);
+            document.getElementById('sendMsgBtn').addEventListener('click', sendMessage);
+            document.getElementById('chatInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') sendMessage();
+            });
+            
+            // Friends
+            document.getElementById('addFriendBtn').addEventListener('click', sendFriendRequest);
+        }
 
         // Auth Functions
         async function checkAuth() {
@@ -1041,8 +1079,8 @@
             
             if (token && username) {
                 try {
-                    const response = await fetch(`${API_URL}/api/auth/verify`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
+                    const response = await fetch(API_URL + '/api/auth/verify', {
+                        headers: { 'Authorization': 'Bearer ' + token }
                     });
                     
                     if (response.ok) {
@@ -1091,8 +1129,13 @@
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
             
+            if (!username || !password) {
+                showNotification('Wypełnij wszystkie pola');
+                return;
+            }
+            
             try {
-                const response = await fetch(`${API_URL}/api/auth/login`, {
+                const response = await fetch(API_URL + '/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
@@ -1119,8 +1162,13 @@
             const email = document.getElementById('regEmail').value;
             const password = document.getElementById('regPassword').value;
             
+            if (!username || !password) {
+                showNotification('Wypełnij wymagane pola');
+                return;
+            }
+            
             try {
-                const response = await fetch(`${API_URL}/api/auth/register`, {
+                const response = await fetch(API_URL + '/api/auth/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password, email })
@@ -1153,11 +1201,15 @@
 
         // Navigation
         function navigate(page) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelectorAll('.page').forEach(function(p) {
+                p.classList.remove('active');
+            });
+            document.querySelectorAll('.nav-link').forEach(function(l) {
+                l.classList.remove('active');
+            });
             
             document.getElementById(page + 'Page').classList.add('active');
-            event.target.closest('.nav-link').classList.add('active');
+            document.querySelector('[data-page="' + page + '"]').classList.add('active');
             
             if (page === 'library') loadLibrary();
             if (page === 'friends') loadFriends();
@@ -1166,11 +1218,12 @@
         // Store Functions
         async function loadGames() {
             try {
-                const response = await fetch(`${API_URL}/games`);
+                const response = await fetch(API_URL + '/games');
                 games = await response.json();
                 renderGames(games);
             } catch (error) {
                 console.error('Error loading games:', error);
+                document.getElementById('gamesContainer').innerHTML = '<div class="empty-state">Błąd ładowania gier</div>';
             }
         }
 
@@ -1182,76 +1235,101 @@
                 return;
             }
             
-            container.innerHTML = gamesToRender.map(game => `
-                <div class="game-card" onclick="openGameModal('${game.id}')">
-                    <div class="game-image">
-                        ${game.iconUrl ? `<img src="${game.iconUrl}" alt="${game.name}">` : (game.icon || '🎮')}
-                    </div>
-                    <div class="game-info">
-                        <div class="game-title">${game.name}</div>
-                        <div class="game-dev">${game.developer || 'Nieznany'}</div>
-                        <div class="game-footer">
-                            <div class="game-price">${game.price === 0 ? 'DARMOWE' : game.price + 'zł'}</div>
-                            <div class="game-rating">★ ${game.rating || '0.0'}</div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+            container.innerHTML = gamesToRender.map(function(game) {
+                return '<div class="game-card" data-game-id="' + game.id + '">' +
+                    '<div class="game-image">' +
+                        (game.iconUrl ? '<img src="' + game.iconUrl + '" alt="' + game.name + '">' : (game.icon || '🎮')) +
+                    '</div>' +
+                    '<div class="game-info">' +
+                        '<div class="game-title">' + game.name + '</div>' +
+                        '<div class="game-dev">' + (game.developer || 'Nieznany') + '</div>' +
+                        '<div class="game-footer">' +
+                            '<div class="game-price">' + (game.price === 0 ? 'DARMOWE' : game.price + 'zł') + '</div>' +
+                            '<div class="game-rating">★ ' + (game.rating || '0.0') + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+            
+            // Add click listeners
+            container.querySelectorAll('.game-card').forEach(function(card) {
+                card.addEventListener('click', function() {
+                    openGameModal(this.getAttribute('data-game-id'));
+                });
+            });
         }
 
         function searchGames() {
             const query = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = games.filter(g => 
-                g.name.toLowerCase().includes(query) || 
-                (g.developer && g.developer.toLowerCase().includes(query))
-            );
+            const filtered = games.filter(function(g) {
+                return g.name.toLowerCase().includes(query) || 
+                       (g.developer && g.developer.toLowerCase().includes(query));
+            });
             renderGames(filtered);
         }
 
         // Game Modal
         async function openGameModal(gameId) {
             currentGameId = gameId;
-            const game = games.find(g => g.id === gameId);
+            const game = games.find(function(g) { return g.id === gameId; });
             if (!game) return;
             
             const modal = document.getElementById('gameModal');
             const body = document.getElementById('modalBody');
             
-            // Check if in library
-            const inLibrary = library.some(l => l.gameId === gameId);
+            const inLibrary = library.some(function(l) { return l.gameId === gameId; });
             
-            body.innerHTML = `
-                <h2 class="modal-title">${game.name}</h2>
-                <div class="modal-meta">
-                    <span class="meta-tag">🎯 ${game.genre || 'Nieznany'}</span>
-                    <span class="meta-tag">👨‍💻 ${game.developer || 'Nieznany'}</span>
-                    <span class="meta-tag">💰 ${game.price === 0 ? 'DARMOWE' : game.price + 'zł'}</span>
-                    <span class="meta-tag">🔞 PEGI ${game.pegi || '?'}</span>
-                </div>
+            body.innerHTML = 
+                '<h2 class="modal-title">' + game.name + '</h2>' +
+                '<div class="modal-meta">' +
+                    '<span class="meta-tag">🎯 ' + (game.genre || 'Nieznany') + '</span>' +
+                    '<span class="meta-tag">👨‍💻 ' + (game.developer || 'Nieznany') + '</span>' +
+                    '<span class="meta-tag">💰 ' + (game.price === 0 ? 'DARMOWE' : game.price + 'zł') + '</span>' +
+                    '<span class="meta-tag">🔞 PEGI ' + (game.pegi || '?') + '</span>' +
+                '</div>' +
                 
-                <div class="star-rating" id="gameRating">
-                    ${[1,2,3,4,5].map(i => `<span class="star" onclick="rateGame(${i})">★</span>`).join('')}
-                </div>
+                '<div class="star-rating" id="gameRating">' +
+                    [1,2,3,4,5].map(function(i) {
+                        return '<span class="star" data-rating="' + i + '">★</span>';
+                    }).join('') +
+                '</div>' +
                 
-                <p class="modal-description">${game.description || 'Brak opisu'}</p>
+                '<p class="modal-description">' + (game.description || 'Brak opisu') + '</p>' +
                 
-                <div class="modal-actions">
-                    ${inLibrary ? 
-                        `<button class="btn btn-primary" onclick="addToLibrary('${gameId}')">🛒 Dodaj do biblioteki</button>`
-                    }
-                </div>
-
-                <div class="screenshots-grid" id="modalScreenshots"></div>
+                '<div class="modal-actions">' +
+                    (inLibrary ? 
+                        '<button class="btn btn-success" id="inLibraryBtn" disabled>✓ W bibliotece</button>' :
+                        '<button class="btn btn-primary" id="addToLibBtn">🛒 Dodaj do biblioteki</button>'
+                    ) +
+                '</div>' +
                 
-                <div class="comments-section">
-                    <h3>Komentarze</h3>
-                    <div class="comment-form">
-                        <textarea class="comment-textarea" id="commentText" placeholder="Napisz komentarz..."></textarea>
-                        <button class="btn btn-small" onclick="addComment()">Dodaj komentarz</button>
-                    </div>
-                    <div id="commentsList"></div>
-                </div>
-            `;
+                '<div class="screenshots-grid" id="modalScreenshots"></div>' +
+                
+                '<div class="comments-section">' +
+                    '<h3>Komentarze</h3>' +
+                    '<div class="comment-form">' +
+                        '<textarea class="comment-textarea" id="commentText" placeholder="Napisz komentarz..."></textarea>' +
+                        '<button class="btn btn-small" id="addCommentBtn">Dodaj komentarz</button>' +
+                    '</div>' +
+                    '<div id="commentsList"></div>' +
+                '</div>';
+            
+            // Add listeners
+            if (!inLibrary) {
+                document.getElementById('addToLibBtn').addEventListener('click', function() {
+                    addToLibrary(gameId);
+                });
+            }
+            
+            document.getElementById('addCommentBtn').addEventListener('click', addComment);
+            
+            // Star rating
+            document.querySelectorAll('#gameRating .star').forEach(function(star) {
+                star.addEventListener('click', function() {
+                    const rating = parseInt(this.getAttribute('data-rating'));
+                    rateGame(rating);
+                });
+            });
             
             modal.classList.add('active');
             loadGameDetails(gameId);
@@ -1260,15 +1338,13 @@
         async function loadGameDetails(gameId) {
             // Load screenshots
             try {
-                const response = await fetch(`${API_URL}/api/screenshots/${gameId}`);
+                const response = await fetch(API_URL + '/api/screenshots/' + gameId);
                 const data = await response.json();
                 const container = document.getElementById('modalScreenshots');
-                if (data.screenshots.length > 0) {
-                    container.innerHTML = data.screenshots.map(s => `
-                        <div class="screenshot-thumb">
-                            <img src="${s.url}" onclick="window.open('${s.url}')">
-                        </div>
-                    `).join('');
+                if (data.screenshots && data.screenshots.length > 0) {
+                    container.innerHTML = data.screenshots.map(function(s) {
+                        return '<div class="screenshot-thumb"><img src="' + s.url + '"></div>';
+                    }).join('');
                 }
             } catch (e) {}
             
@@ -1281,33 +1357,43 @@
 
         async function loadComments(gameId) {
             try {
-                const response = await fetch(`${API_URL}/api/games/${gameId}/comments`);
+                const response = await fetch(API_URL + '/api/games/' + gameId + '/comments');
                 const data = await response.json();
                 
                 const container = document.getElementById('commentsList');
-                container.innerHTML = data.comments.map(c => `
-                    <div class="comment">
-                        <div class="comment-header">
-                            <span class="comment-author">${c.username}</span>
-                            <span class="comment-date">${new Date(c.createdAt).toLocaleDateString()}</span>
-                        </div>
-                        ${c.rating ? '<div style="color: #ffd700">★'.repeat(c.rating) + '</div>' : ''}
-                        <div>${c.content}</div>
-                    </div>
-                `).join('');
-            } catch (e) {}
+                if (!data.comments || data.comments.length === 0) {
+                    container.innerHTML = '<div class="empty-state">Brak komentarzy</div>';
+                    return;
+                }
+                
+                container.innerHTML = data.comments.map(function(c) {
+                    return '<div class="comment">' +
+                        '<div class="comment-header">' +
+                            '<span class="comment-author">' + c.username + '</span>' +
+                            '<span class="comment-date">' + new Date(c.createdAt).toLocaleDateString() + '</span>' +
+                        '</div>' +
+                        (c.rating ? '<div style="color: #ffd700">' + '★'.repeat(c.rating) + '</div>' : '') +
+                        '<div>' + escapeHtml(c.content) + '</div>' +
+                    '</div>';
+                }).join('');
+            } catch (e) {
+                document.getElementById('commentsList').innerHTML = '<div class="empty-state">Błąd ładowania komentarzy</div>';
+            }
         }
 
         async function addComment() {
             const content = document.getElementById('commentText').value;
-            if (!content) return;
+            if (!content) {
+                showNotification('Wpisz treść komentarza');
+                return;
+            }
             
             try {
-                await fetch(`${API_URL}/api/games/${currentGameId}/comments`, {
+                await fetch(API_URL + '/api/games/' + currentGameId + '/comments', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
+                        'Authorization': 'Bearer ' + currentToken
                     },
                     body: JSON.stringify({
                         username: currentUser,
@@ -1325,12 +1411,12 @@
 
         async function loadGameRating(gameId) {
             try {
-                const response = await fetch(`${API_URL}/api/games/${gameId}/ratings?username=${currentUser}`);
+                const response = await fetch(API_URL + '/api/games/' + gameId + '/ratings?username=' + currentUser);
                 const data = await response.json();
                 
                 if (data.yourRating) {
                     const stars = document.querySelectorAll('#gameRating .star');
-                    stars.forEach((s, i) => {
+                    stars.forEach(function(s, i) {
                         if (i < data.yourRating) s.classList.add('filled');
                     });
                 }
@@ -1339,11 +1425,11 @@
 
         async function rateGame(rating) {
             try {
-                await fetch(`${API_URL}/api/games/${currentGameId}/rate`, {
+                await fetch(API_URL + '/api/games/' + currentGameId + '/rate', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
+                        'Authorization': 'Bearer ' + currentToken
                     },
                     body: JSON.stringify({
                         username: currentUser,
@@ -1351,7 +1437,14 @@
                     })
                 });
                 
-                showNotification(`Oceniono na ${rating} gwiazdek!`);
+                // Update stars
+                const stars = document.querySelectorAll('#gameRating .star');
+                stars.forEach(function(s, i) {
+                    if (i < rating) s.classList.add('filled');
+                    else s.classList.remove('filled');
+                });
+                
+                showNotification('Oceniono na ' + rating + ' gwiazdek!');
                 loadGames();
             } catch (e) {
                 showNotification('Błąd oceniania');
@@ -1363,22 +1456,17 @@
             currentGameId = null;
         }
 
-        function closeModal(e) {
-            if (e.target === e.currentTarget) {
-                closeGameModal();
-            }
-        }
-
         // Library Functions
         async function loadLibrary() {
             try {
-                const response = await fetch(`${API_URL}/api/users/${currentUser}/library`, {
-                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library', {
+                    headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 library = await response.json();
                 renderLibrary();
             } catch (error) {
                 console.error('Error loading library:', error);
+                document.getElementById('libraryContainer').innerHTML = '<div class="empty-state">Błąd ładowania biblioteki</div>';
             }
         }
 
@@ -1390,37 +1478,41 @@
                 return;
             }
             
-            container.innerHTML = library.map(item => {
+            container.innerHTML = library.map(function(item) {
                 const game = item.gameDetails || {};
-                return `
-                    <div class="library-card">
-                        <div class="library-icon">
-                            ${game.iconUrl ? `<img src="${game.iconUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">` : (game.icon || '🎮')}
-                        </div>
-                        <div class="library-info">
-                            <div class="library-title">${game.name || 'Unknown'}</div>
-                            <div class="library-meta">
-                                Dodano: ${new Date(item.addedAt).toLocaleDateString()} | 
-                                ${item.installed ? 'Zainstalowano' : 'Nie zainstalowano'}
-                            </div>
-                            <div class="library-actions">
-                                <button class="btn btn-small btn-secondary" onclick="removeFromLibrary('${item.gameId}')">🗑️ Usuń</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
+                return '<div class="library-card">' +
+                    '<div class="library-icon">' +
+                        (game.iconUrl ? '<img src="' + game.iconUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px">' : (game.icon || '🎮')) +
+                    '</div>' +
+                    '<div class="library-info">' +
+                        '<div class="library-title">' + (game.name || 'Unknown') + '</div>' +
+                        '<div class="library-meta">' +
+                            'Dodano: ' + new Date(item.addedAt).toLocaleDateString() +
+                        '</div>' +
+                        '<div class="library-actions">' +
+                            '<button class="btn btn-small btn-secondary remove-game-btn" data-game-id="' + item.gameId + '">🗑️ Usuń</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
             }).join('');
+            
+            // Add remove listeners
+            container.querySelectorAll('.remove-game-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    removeFromLibrary(this.getAttribute('data-game-id'));
+                });
+            });
         }
 
         async function addToLibrary(gameId) {
             try {
-                await fetch(`${API_URL}/api/users/${currentUser}/library`, {
+                await fetch(API_URL + '/api/users/' + currentUser + '/library', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
+                        'Authorization': 'Bearer ' + currentToken
                     },
-                    body: JSON.stringify({ gameId })
+                    body: JSON.stringify({ gameId: gameId })
                 });
                 
                 showNotification('Dodano do biblioteki!');
@@ -1435,9 +1527,9 @@
             if (!confirm('Czy na pewno chcesz usunąć tę grę z biblioteki?')) return;
             
             try {
-                await fetch(`${API_URL}/api/users/${currentUser}/library/${gameId}`, {
+                await fetch(API_URL + '/api/users/' + currentUser + '/library/' + gameId, {
                     method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                    headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 
                 showNotification('Usunięto z biblioteki');
@@ -1447,20 +1539,11 @@
             }
         }
 
-        function downloadGame(gameId) {
-            const game = games.find(g => g.id === gameId) || library.find(l => l.gameId === gameId)?.gameDetails;
-            if (game && game.download_url) {
-                window.open(game.download_url, '_blank');
-            } else {
-                showNotification('Link do pobrania niedostępny');
-            }
-        }
-
         // Friends Functions
         async function loadFriends() {
             try {
-                const response = await fetch(`${API_URL}/api/friends/${currentUser}`, {
-                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                const response = await fetch(API_URL + '/api/friends/' + currentUser, {
+                    headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 const data = await response.json();
                 
@@ -1477,6 +1560,7 @@
                 }
             } catch (error) {
                 console.error('Error loading friends:', error);
+                document.getElementById('friendsList').innerHTML = '<div class="empty-state">Błąd ładowania znajomych</div>';
             }
         }
 
@@ -1488,36 +1572,49 @@
             if (friendsList.length === 0) {
                 html += '<div class="empty-state">Nie masz jeszcze znajomych</div>';
             } else {
-                html += friendsList.map(f => `
-                    <div class="friend-item" onclick="openChat('${f.username}')">
-                        <div class="friend-avatar">${f.username[0].toUpperCase()}</div>
-                        <div class="friend-info">
-                            <div class="friend-name">${f.username}</div>
-                            <div class="friend-status ${f.status === 'online' ? 'status-online' : 'status-offline'}">
-                                ${f.status === 'online' ? '🟢 Online' : '🔴 Offline'}
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
+                html += friendsList.map(function(f) {
+                    return '<div class="friend-item" data-friend="' + f.username + '">' +
+                        '<div class="friend-avatar">' + f.username[0].toUpperCase() + '</div>' +
+                        '<div class="friend-info">' +
+                            '<div class="friend-name">' + f.username + '</div>' +
+                            '<div class="friend-status ' + (f.status === 'online' ? 'status-online' : 'status-offline') + '">' +
+                                (f.status === 'online' ? '🟢 Online' : '🔴 Offline') +
+                            '</div>' +
+                        '</div>' +
+                    '</div>';
+                }).join('');
             }
             
             container.innerHTML = html;
             
+            // Add click listeners
+            container.querySelectorAll('.friend-item').forEach(function(item) {
+                item.addEventListener('click', function() {
+                    openChat(this.getAttribute('data-friend'));
+                });
+            });
+            
             // Render pending invites
             const pendingContainer = document.getElementById('pendingInvites');
-            if (pending.length > 0) {
-                pendingContainer.innerHTML = `
-                    <h3 style="margin: 20px 0 15px;">Oczekujące zaproszenia</h3>
-                    ${pending.map(p => `
-                        <div class="invite-item">
-                            <span>${p.from}</span>
-                            <div class="invite-actions">
-                                <button class="btn-icon btn-accept" onclick="respondInvite('${p.from}', true)">✓</button>
-                                <button class="btn-icon btn-decline" onclick="respondInvite('${p.from}', false)">✕</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                `;
+            if (pending && pending.length > 0) {
+                pendingContainer.innerHTML = 
+                    '<h3 style="margin: 20px 0 15px;">Oczekujące zaproszenia</h3>' +
+                    pending.map(function(p) {
+                        return '<div class="invite-item">' +
+                            '<span>' + p.from + '</span>' +
+                            '<div class="invite-actions">' +
+                                '<button class="btn-icon btn-accept" data-from="' + p.from + '" data-action="accept">✓</button>' +
+                                '<button class="btn-icon btn-decline" data-from="' + p.from + '" data-action="decline">✕</button>' +
+                            '</div>' +
+                        '</div>';
+                    }).join('');
+                
+                // Add listeners
+                pendingContainer.querySelectorAll('.btn-icon').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        respondInvite(this.getAttribute('data-from'), this.getAttribute('data-action') === 'accept');
+                    });
+                });
             } else {
                 pendingContainer.innerHTML = '';
             }
@@ -1525,14 +1622,17 @@
 
         async function sendFriendRequest() {
             const username = document.getElementById('friendUsername').value;
-            if (!username || username === currentUser) return;
+            if (!username || username === currentUser) {
+                showNotification('Wpisz poprawną nazwę użytkownika');
+                return;
+            }
             
             try {
-                await fetch(`${API_URL}/api/friends/add`, {
+                await fetch(API_URL + '/api/friends/add', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
+                        'Authorization': 'Bearer ' + currentToken
                     },
                     body: JSON.stringify({ fromUser: currentUser, toUser: username })
                 });
@@ -1546,13 +1646,17 @@
 
         async function respondInvite(fromUser, accept) {
             try {
-                await fetch(`${API_URL}/api/friends/respond`, {
+                await fetch(API_URL + '/api/friends/respond', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
+                        'Authorization': 'Bearer ' + currentToken
                     },
-                    body: JSON.stringify({ username: currentUser, fromUser, accept })
+                    body: JSON.stringify({ 
+                        username: currentUser, 
+                        fromUser: fromUser, 
+                        accept: accept 
+                    })
                 });
                 
                 showNotification(accept ? 'Dodano znajomego!' : 'Odrzucono zaproszenie');
@@ -1565,7 +1669,7 @@
         // Chat Functions
         async function openChat(friendUsername) {
             currentChatFriend = friendUsername;
-            document.getElementById('chatWith').textContent = `Rozmowa z ${friendUsername}`;
+            document.getElementById('chatWith').textContent = 'Rozmowa z ' + friendUsername;
             document.getElementById('chatModal').classList.add('active');
             await loadChat();
         }
@@ -1574,20 +1678,20 @@
             if (!currentChatFriend) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/chat/${currentUser}/${currentChatFriend}`, {
-                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                const response = await fetch(API_URL + '/api/chat/' + currentUser + '/' + currentChatFriend, {
+                    headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 const data = await response.json();
                 
                 const container = document.getElementById('chatMessages');
-                container.innerHTML = (data.messages || []).map(m => `
-                    <div class="message ${m.sender === currentUser ? 'sent' : ''}">
-                        <div class="message-bubble">${m.content}</div>
-                        <div style="font-size: 11px; opacity: 0.6; margin-top: 3px;">
-                            ${new Date(m.timestamp).toLocaleTimeString()}
-                        </div>
-                    </div>
-                `).join('');
+                container.innerHTML = (data.messages || []).map(function(m) {
+                    return '<div class="message ' + (m.sender === currentUser ? 'sent' : '') + '">' +
+                        '<div class="message-bubble">' + escapeHtml(m.content) + '</div>' +
+                        '<div style="font-size: 11px; opacity: 0.6; margin-top: 3px;">' +
+                            new Date(m.timestamp).toLocaleTimeString() +
+                        '</div>' +
+                    '</div>';
+                }).join('');
                 
                 container.scrollTop = container.scrollHeight;
             } catch (e) {}
@@ -1599,16 +1703,16 @@
             if (!content || !currentChatFriend) return;
             
             try {
-                await fetch(`${API_URL}/api/chat/send`, {
+                await fetch(API_URL + '/api/chat/send', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
+                        'Authorization': 'Bearer ' + currentToken
                     },
                     body: JSON.stringify({
                         fromUser: currentUser,
                         toUser: currentChatFriend,
-                        content
+                        content: content
                     })
                 });
                 
@@ -1617,10 +1721,6 @@
             } catch (e) {
                 showNotification('Błąd wysyłania wiadomości');
             }
-        }
-
-        function handleChatKey(e) {
-            if (e.key === 'Enter') sendMessage();
         }
 
         function closeChat() {
@@ -1634,11 +1734,17 @@
             div.className = 'notification';
             div.textContent = message;
             document.body.appendChild(div);
-            setTimeout(() => div.remove(), 3000);
+            setTimeout(function() { div.remove(); }, 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Close modals on Escape
-        document.addEventListener('keydown', (e) => {
+        document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeGameModal();
                 closeChat();
