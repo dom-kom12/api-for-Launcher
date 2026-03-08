@@ -1237,7 +1237,6 @@
                 
                 <div class="modal-actions">
                     ${inLibrary ? 
-                        `<button class="btn btn-success" onclick="downloadGame('${gameId}')">⬇️ Pobierz</button>` :
                         `<button class="btn btn-primary" onclick="addToLibrary('${gameId}')">🛒 Dodaj do biblioteki</button>`
                     }
                 </div>
@@ -1405,7 +1404,6 @@
                                 ${item.installed ? 'Zainstalowano' : 'Nie zainstalowano'}
                             </div>
                             <div class="library-actions">
-                                ${game.download_url ? `<button class="btn btn-small" onclick="downloadGame('${item.gameId}')">⬇️ Pobierz</button>` : ''}
                                 <button class="btn btn-small btn-secondary" onclick="removeFromLibrary('${item.gameId}')">🗑️ Usuń</button>
                             </div>
                         </div>
