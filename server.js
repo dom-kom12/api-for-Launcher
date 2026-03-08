@@ -1,3 +1,4 @@
+// server.js - POPRAWIONY
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -20,7 +21,7 @@ const ALLOWED_GUILDS = process.env.ALLOWED_GUILDS
 
 const DEFAULT_GUILD_ID = ALLOWED_GUILDS[0];
 const SCREENSHOTS_CHANNEL_ID = process.env.SCREENSHOTS_CHANNEL_ID || '1479939801385013288';
-const ICONS_CHANNEL_ID = process.env.ICONS_CHANNEL_ID || '1479939801385013288'; // Może być ten sam co screenshoty
+const ICONS_CHANNEL_ID = process.env.ICONS_CHANNEL_ID || '1479939801385013288';
 
 // WAŻNE: URL do self-pingu
 const SELF_PING_URL = process.env.SELF_PING_URL || `http://0.0.0.0:${PORT}/health`;
@@ -31,8 +32,13 @@ if (!DISCORD_TOKEN) {
     process.exit(1);
 }
 
-// Middleware
-app.use(cors());
+// Middleware - CORS na początku!
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -40,7 +46,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const storage = multer.memoryStorage();
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+    limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         if (allowedTypes.includes(file.mimetype)) {
@@ -68,8 +74,8 @@ let isShuttingDown = false;
 const userChannelsCache = new Map();
 const gamesCache = new Map();
 const pendingInvitesCache = new Map();
-const screenshotsCache = new Map(); // Cache URLi screenshotów
-const iconsCache = new Map(); // Cache URLi ikon
+const screenshotsCache = new Map();
+const iconsCache = new Map();
 
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
@@ -113,7 +119,6 @@ async function validateGuildAccess(guildId) {
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
     console.log(`📡 Dozwolone guildy: ${ALLOWED_GUILDS.join(', ')}`);
-    console.log(`📸 Kanał screenshotów: ${SCREENSHOTS_CHANNEL_ID}`);
     startSelfPinger();
 });
 
@@ -191,7 +196,7 @@ app.get('/library.html', async (req, res) => {
     }
 });
 
-// Strona główna (opcjonalnie, jeśli masz index.html)
+// Strona główna
 app.get('/', async (req, res) => {
     try {
         const indexPath = path.join(__dirname, 'index.html');
@@ -199,11 +204,11 @@ app.get('/', async (req, res) => {
         res.setHeader('Content-Type', 'text/html');
         res.send(html);
     } catch (error) {
-        // Jeśli nie ma index.html, zwróć JSON z informacją
         res.json({ 
             message: 'Nebula Game Server',
-            status: 'online',
-            endpoints: ['/games', '/login.html', '/library.html', '/friends.html', '/game.html']
+            status: discordReady ? 'online' : 'initializing',
+            discordReady: discordReady,
+            endpoints: ['/games', '/api/auth/login', '/api/auth/register', '/api/auth/verify']
         });
     }
 });
@@ -255,17 +260,24 @@ app.get('/health', async (req, res) => {
     res.json(response);
 });
 
+// Middleware do wymagania Discorda (pomija auth)
 function requireDiscordForWrite(req, res, next) {
+    // Pomijamy dla endpointów auth
+    if (req.path.includes('/api/auth/')) {
+        return next();
+    }
     if (!discordReady) {
         return res.status(503).json({ error: 'Discord not ready', retryAfter: 5 });
     }
     next();
 }
 
+app.use(requireDiscordForWrite);
+
 // === UPLOAD PLIKÓW DO DISCORDA ===
 
 // Upload ikony gry
-app.post('/api/upload/icon', requireDiscordForWrite, upload.single('icon'), async (req, res) => {
+app.post('/api/upload/icon', upload.single('icon'), async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         const guild = await getGuild(guildId);
@@ -308,14 +320,13 @@ app.post('/api/upload/icon', requireDiscordForWrite, upload.single('icon'), asyn
     }
 });
 
-// Upload screenshotów (pojedynczy lub wielokrotny)
-app.post('/api/upload/screenshot', requireDiscordForWrite, upload.single('screenshot'), async (req, res) => {
+// Upload screenshotów
+app.post('/api/upload/screenshot', upload.single('screenshot'), async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         const gameId = req.query.gameId;
         
         const guild = await getGuild(guildId);
-        const config = getGuildConfig(guildId);
         
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
@@ -345,8 +356,6 @@ app.post('/api/upload/screenshot', requireDiscordForWrite, upload.single('screen
         };
 
         screenshotsCache.set(screenshotId, screenshotData);
-
-        // Zapisz w globalnym pliku screenshots.json
         await saveScreenshotsIndex(guildId);
 
         res.json({ 
@@ -363,7 +372,7 @@ app.post('/api/upload/screenshot', requireDiscordForWrite, upload.single('screen
 });
 
 // Upload wielu screenshotów naraz
-app.post('/api/upload/screenshots', requireDiscordForWrite, upload.array('screenshots', 10), async (req, res) => {
+app.post('/api/upload/screenshots', upload.array('screenshots', 10), async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         const gameId = req.query.gameId;
@@ -422,7 +431,6 @@ app.get('/api/screenshots/:gameId', async (req, res) => {
         const gameId = req.params.gameId;
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         
-        // Załaduj z cache lub z Discorda
         await loadScreenshotsIndex(guildId);
         
         const gameScreenshots = Array.from(screenshotsCache.values())
@@ -463,8 +471,8 @@ app.get('/api/games/:gameId/comments', async (req, res) => {
     }
 });
 
-// Dodaj komentarz (wymaga zalogowania)
-app.post('/api/games/:gameId/comments', requireDiscordForWrite, async (req, res) => {
+// Dodaj komentarz
+app.post('/api/games/:gameId/comments', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         const gameId = req.params.gameId;
@@ -477,7 +485,8 @@ app.post('/api/games/:gameId/comments', requireDiscordForWrite, async (req, res)
         // Weryfikacja użytkownika
         const users = await loadGlobalFile('users.json', {}, guildId);
         const user = users[username];
-        if (!user || user.token !== req.headers.authorization?.substring(7)) {
+        const authHeader = req.headers.authorization;
+        if (!user || !authHeader || !authHeader.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
@@ -485,14 +494,14 @@ app.post('/api/games/:gameId/comments', requireDiscordForWrite, async (req, res)
             id: crypto.randomUUID(),
             username: username,
             content: content.trim(),
-            rating: rating || null, // 1-5 gwiazdek
+            rating: rating || null,
             createdAt: new Date().toISOString(),
             likes: 0,
             dislikes: 0
         };
 
         let comments = await loadGameComments(gameId, guildId);
-        comments.unshift(comment); // Najnowsze na górze
+        comments.unshift(comment);
         
         await saveGameComments(gameId, comments, guildId);
 
@@ -525,16 +534,16 @@ app.post('/api/games/:gameId/comments', requireDiscordForWrite, async (req, res)
 });
 
 // Usuń komentarz
-app.delete('/api/games/:gameId/comments/:commentId', requireDiscordForWrite, async (req, res) => {
+app.delete('/api/games/:gameId/comments/:commentId', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         const { gameId, commentId } = req.params;
         const { username } = req.body;
         
-        // Weryfikacja
         const users = await loadGlobalFile('users.json', {}, guildId);
         const user = users[username];
-        if (!user || user.token !== req.headers.authorization?.substring(7)) {
+        const authHeader = req.headers.authorization;
+        if (!user || !authHeader || !authHeader.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
@@ -562,41 +571,8 @@ app.delete('/api/games/:gameId/comments/:commentId', requireDiscordForWrite, asy
     }
 });
 
-// Polub/nie lubi komentarz
-app.post('/api/games/:gameId/comments/:commentId/vote', requireDiscordForWrite, async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const { gameId, commentId } = req.params;
-        const { username, type } = req.body; // type: 'like' lub 'dislike'
-        
-        let comments = await loadGameComments(gameId, guildId);
-        const comment = comments.find(c => c.id === commentId);
-        
-        if (!comment) {
-            return res.status(404).json({ error: 'Comment not found' });
-        }
-
-        if (type === 'like') {
-            comment.likes = (comment.likes || 0) + 1;
-        } else if (type === 'dislike') {
-            comment.dislikes = (comment.dislikes || 0) + 1;
-        }
-
-        await saveGameComments(gameId, comments, guildId);
-
-        res.json({
-            success: true,
-            comment: comment,
-            message: 'Vote recorded'
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Ocena gry (rating 1-5)
-app.post('/api/games/:gameId/rate', requireDiscordForWrite, async (req, res) => {
+// Ocena gry
+app.post('/api/games/:gameId/rate', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         const gameId = req.params.gameId;
@@ -606,14 +582,13 @@ app.post('/api/games/:gameId/rate', requireDiscordForWrite, async (req, res) => 
             return res.status(400).json({ error: 'Rating must be 1-5' });
         }
 
-        // Weryfikacja użytkownika
         const users = await loadGlobalFile('users.json', {}, guildId);
         const user = users[username];
-        if (!user || user.token !== req.headers.authorization?.substring(7)) {
+        const authHeader = req.headers.authorization;
+        if (!user || !authHeader || !authHeader.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        // Zapisz ocenę
         const ratings = await loadGameRatings(gameId, guildId);
         ratings[username] = {
             rating: rating,
@@ -622,7 +597,6 @@ app.post('/api/games/:gameId/rate', requireDiscordForWrite, async (req, res) => 
         
         await saveGameRatings(gameId, ratings, guildId);
 
-        // Przelicz średnią
         const allRatings = Object.values(ratings).map(r => r.rating);
         const average = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
 
@@ -652,7 +626,6 @@ app.get('/api/games/:gameId/ratings', async (req, res) => {
             ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length 
             : 0;
 
-        // Rozkład ocen
         const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
         allRatings.forEach(r => distribution[r] = (distribution[r] || 0) + 1);
 
@@ -721,8 +694,6 @@ async function saveGameRatings(gameId, ratings, guildId) {
     allRatings[gameId] = ratings;
     await saveGlobalFile('ratings.json', allRatings, '⭐ Ratings', guildId);
 }
-
-// === RESZTA FUNKCJI (z poprzedniej wersji) ===
 
 async function checkUserPendingInvites(username, guildId = DEFAULT_GUILD_ID) {
     try {
@@ -961,9 +932,6 @@ async function uploadGamesJsonToDiscord(guildId) {
         return false;
     }
 }
-
-// START
-initDiscord();
 
 // === FUNKCJE POMOCNICZE ===
 function hashPassword(password) {
@@ -1309,24 +1277,7 @@ app.get('/games/:id', async (req, res) => {
     }
 });
 
-app.get('/games/:id/download', requireDiscordForWrite, async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
-    try {
-        await validateGuildAccess(guildId);
-        const games = gamesCache.get(guildId) || [];
-        const game = games.find(g => g.id === req.params.id);
-        
-        if (!game) return res.status(404).json({ error: 'Game not found' });
-        if (!game.download_url) return res.status(404).json({ error: 'No download URL' });
-        
-        res.json({ url: game.download_url });
-    } catch (error) {
-        res.status(403).json({ error: error.message });
-    }
-});
-
-app.post('/api/games', requireDiscordForWrite, async (req, res) => {
+app.post('/api/games', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         await validateGuildAccess(guildId);
@@ -1346,7 +1297,7 @@ app.post('/api/games', requireDiscordForWrite, async (req, res) => {
             developer: developer || 'Unknown',
             price: price || 0, 
             icon: icon || '🎮', 
-            iconUrl: iconUrl || null, // URL do obrazka ikony
+            iconUrl: iconUrl || null,
             color: color || '#00d4ff',
             pegi: pegi || 12, 
             download_url: download_url || null, 
@@ -1383,7 +1334,7 @@ app.post('/api/games', requireDiscordForWrite, async (req, res) => {
     }
 });
 
-app.put('/api/games/:id', requireDiscordForWrite, async (req, res) => {
+app.put('/api/games/:id', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         await validateGuildAccess(guildId);
@@ -1401,7 +1352,7 @@ app.put('/api/games/:id', requireDiscordForWrite, async (req, res) => {
     }
 });
 
-app.delete('/api/games/:id', requireDiscordForWrite, async (req, res) => {
+app.delete('/api/games/:id', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         await validateGuildAccess(guildId);
@@ -1414,17 +1365,29 @@ app.delete('/api/games/:id', requireDiscordForWrite, async (req, res) => {
     }
 });
 
-// === AUTH ===
+// === AUTH - BEZ WYMAGANIA DISCORDA ===
 
-app.post('/api/auth/register', requireDiscordForWrite, async (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        await validateGuildAccess(guildId);
+        
+        // Sprawdź czy Discord jest gotowy, ale nie wymagaj dla rejestracji
+        // Jeśli nie jest gotowy, używamy domyślnej konfiguracji
+        let guildConfig = getGuildConfig(guildId);
         
         const { username, password, email } = req.body;
         if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
         
-        const users = await loadGlobalFile('users.json', {}, guildId);
+        // Wczytaj lub utwórz lokalny cache użytkowników jeśli Discord nie jest gotowy
+        let users = {};
+        if (discordReady) {
+            users = await loadGlobalFile('users.json', {}, guildId);
+        } else {
+            // Tymczasowe przechowywanie w pamięci
+            users = global.tempUsers || {};
+            global.tempUsers = users;
+        }
+        
         if (users[username]) return res.status(409).json({ error: 'User exists' });
         
         const token = generateToken();
@@ -1438,32 +1401,43 @@ app.post('/api/auth/register', requireDiscordForWrite, async (req, res) => {
             createdAt: new Date().toISOString()
         };
         
-        await saveGlobalFile('users.json', users, '👥 Users', guildId);
-        await getOrCreateUserChannel(username, guildId);
-        await saveUserFile(username, 'library.json', { games: [] }, '📚 Library', guildId);
-        await saveUserFile(username, 'friends.json', { friends: [], pending: [] }, '👥 Friends', guildId);
-        
-        const embed = new EmbedBuilder()
-            .setTitle('👤 Nowy użytkownik')
-            .setDescription(`**${username}** dołączył do ${guildId}!`)
-            .setColor(0x00ff88);
-        
-        await sendDiscordNotification(embed, guildId);
+        if (discordReady) {
+            await saveGlobalFile('users.json', users, '👥 Users', guildId);
+            await getOrCreateUserChannel(username, guildId);
+            await saveUserFile(username, 'library.json', { games: [] }, '📚 Library', guildId);
+            await saveUserFile(username, 'friends.json', { friends: [], pending: [] }, '👥 Friends', guildId);
+            
+            const embed = new EmbedBuilder()
+                .setTitle('👤 Nowy użytkownik')
+                .setDescription(`**${username}** dołączył do ${guildId}!`)
+                .setColor(0x00ff88);
+            
+            await sendDiscordNotification(embed, guildId);
+        } else {
+            global.tempUsers = users;
+        }
         
         res.json({ success: true, token, userId: users[username].id });
         
     } catch (error) {
+        console.error('Register error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-app.post('/api/auth/login', requireDiscordForWrite, async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        await validateGuildAccess(guildId);
         
         const { username, password } = req.body;
-        const users = await loadGlobalFile('users.json', {}, guildId);
+        
+        let users = {};
+        if (discordReady) {
+            users = await loadGlobalFile('users.json', {}, guildId);
+        } else {
+            users = global.tempUsers || {};
+        }
+        
         const user = users[username];
         
         if (!user || user.passwordHash !== hashPassword(password)) {
@@ -1473,9 +1447,14 @@ app.post('/api/auth/login', requireDiscordForWrite, async (req, res) => {
         const token = generateToken();
         user.token = token;
         user.lastLogin = new Date().toISOString();
-        await saveGlobalFile('users.json', users, '👥 Users', guildId);
         
-        const hasPending = await checkUserPendingInvites(username, guildId);
+        if (discordReady) {
+            await saveGlobalFile('users.json', users, '👥 Users', guildId);
+        } else {
+            global.tempUsers = users;
+        }
+        
+        const hasPending = discordReady ? await checkUserPendingInvites(username, guildId) : false;
         
         res.json({ 
             success: true, 
@@ -1490,26 +1469,32 @@ app.post('/api/auth/login', requireDiscordForWrite, async (req, res) => {
         });
         
     } catch (error) {
+        console.error('Login error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-app.get('/api/auth/verify', requireDiscordForWrite, async (req, res) => {
+app.get('/api/auth/verify', async (req, res) => {
     const guildId = req.query.guildId || DEFAULT_GUILD_ID;
     
     try {
-        await validateGuildAccess(guildId);
-        
         const auth = req.headers.authorization;
         if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
         
         const token = auth.substring(7);
-        const users = await loadGlobalFile('users.json', {}, guildId);
+        
+        let users = {};
+        if (discordReady) {
+            users = await loadGlobalFile('users.json', {}, guildId);
+        } else {
+            users = global.tempUsers || {};
+        }
+        
         const user = Object.values(users).find(u => u.token === token);
         
         if (!user) return res.status(401).json({ error: 'Invalid token' });
         
-        const hasPending = await checkUserPendingInvites(user.username, guildId);
+        const hasPending = discordReady ? await checkUserPendingInvites(user.username, guildId) : false;
         
         res.json({ 
             valid: true, 
@@ -1526,9 +1511,14 @@ app.get('/api/auth/verify', requireDiscordForWrite, async (req, res) => {
 
 // === FRIENDS ===
 
-app.get('/api/friends/:username', requireDiscordForWrite, async (req, res) => {
+app.get('/api/friends/:username', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
+        
+        if (!discordReady) {
+            return res.json({ friends: [], pendingInvites: [] });
+        }
+        
         await validateGuildAccess(guildId);
         
         const data = await loadUserFile(req.params.username, 'friends.json', { friends: [], pending: [] }, guildId);
@@ -1565,9 +1555,14 @@ app.get('/api/friends/:username', requireDiscordForWrite, async (req, res) => {
     }
 });
 
-app.post('/api/friends/add', requireDiscordForWrite, async (req, res) => {
+app.post('/api/friends/add', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
+        
+        if (!discordReady) {
+            return res.status(503).json({ error: 'Discord not ready' });
+        }
+        
         await validateGuildAccess(guildId);
         
         const { fromUser, toUser } = req.body;
@@ -1606,9 +1601,14 @@ app.post('/api/friends/add', requireDiscordForWrite, async (req, res) => {
     }
 });
 
-app.post('/api/friends/respond', requireDiscordForWrite, async (req, res) => {
+app.post('/api/friends/respond', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
+        
+        if (!discordReady) {
+            return res.status(503).json({ error: 'Discord not ready' });
+        }
+        
         await validateGuildAccess(guildId);
         
         const { username, fromUser, accept } = req.body;
@@ -1650,9 +1650,14 @@ app.post('/api/friends/respond', requireDiscordForWrite, async (req, res) => {
     }
 });
 
-app.delete('/api/friends/remove', requireDiscordForWrite, async (req, res) => {
+app.delete('/api/friends/remove', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
+        
+        if (!discordReady) {
+            return res.status(503).json({ error: 'Discord not ready' });
+        }
+        
         await validateGuildAccess(guildId);
         
         const { username, friendName } = req.body;
@@ -1675,10 +1680,14 @@ app.delete('/api/friends/remove', requireDiscordForWrite, async (req, res) => {
 
 // === CHAT ===
 
-app.get('/api/chat/:user1/:user2', requireDiscordForWrite, async (req, res) => {
+app.get('/api/chat/:user1/:user2', async (req, res) => {
     const guildId = req.query.guildId || DEFAULT_GUILD_ID;
     
     try {
+        if (!discordReady) {
+            return res.json({ messages: [], participants: [req.params.user1, req.params.user2] });
+        }
+        
         await validateGuildAccess(guildId);
         const data = await loadChatFile(req.params.user1, req.params.user2, guildId);
         res.json(data || { 
@@ -1690,10 +1699,14 @@ app.get('/api/chat/:user1/:user2', requireDiscordForWrite, async (req, res) => {
     }
 });
 
-app.post('/api/chat/send', requireDiscordForWrite, async (req, res) => {
+app.post('/api/chat/send', async (req, res) => {
     const guildId = req.query.guildId || DEFAULT_GUILD_ID;
     
     try {
+        if (!discordReady) {
+            return res.status(503).json({ error: 'Discord not ready' });
+        }
+        
         await validateGuildAccess(guildId);
         const { fromUser, toUser, content } = req.body;
         
@@ -1720,10 +1733,15 @@ app.post('/api/chat/send', requireDiscordForWrite, async (req, res) => {
 
 // === LIBRARY ===
 
-app.get('/api/users/:username/library', requireDiscordForWrite, async (req, res) => {
+app.get('/api/users/:username/library', async (req, res) => {
     const guildId = req.query.guildId || DEFAULT_GUILD_ID;
     
     try {
+        if (!discordReady) {
+            // Zwróć pustą bibliotekę jeśli Discord nie jest gotowy
+            return res.json([]);
+        }
+        
         await validateGuildAccess(guildId);
         const lib = await loadUserFile(req.params.username, 'library.json', { games: [] }, guildId);
         const games = gamesCache.get(guildId) || [];
@@ -1739,10 +1757,14 @@ app.get('/api/users/:username/library', requireDiscordForWrite, async (req, res)
     }
 });
 
-app.post('/api/users/:username/library', requireDiscordForWrite, async (req, res) => {
+app.post('/api/users/:username/library', async (req, res) => {
     const guildId = req.query.guildId || DEFAULT_GUILD_ID;
     
     try {
+        if (!discordReady) {
+            return res.status(503).json({ error: 'Discord not ready' });
+        }
+        
         await validateGuildAccess(guildId);
         const { gameId } = req.body;
         const games = gamesCache.get(guildId) || [];
@@ -1770,35 +1792,14 @@ app.post('/api/users/:username/library', requireDiscordForWrite, async (req, res
     }
 });
 
-app.put('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
+app.delete('/api/users/:username/library/:gameId', async (req, res) => {
     const guildId = req.query.guildId || DEFAULT_GUILD_ID;
     
     try {
-        await validateGuildAccess(guildId);
-        const { username, gameId } = req.params;
-        const { installed, installPath } = req.body;
+        if (!discordReady) {
+            return res.status(503).json({ error: 'Discord not ready' });
+        }
         
-        const lib = await loadUserFile(username, 'library.json', { games: [] }, guildId);
-        const gameEntry = lib.games.find(g => g.gameId === gameId);
-        
-        if (!gameEntry) return res.status(404).json({ error: 'Game not in library' });
-        
-        gameEntry.installed = installed;
-        if (installPath !== undefined) gameEntry.installPath = installPath;
-        gameEntry.updatedAt = new Date().toISOString();
-        
-        await saveUserFile(username, 'library.json', lib, '📚 Library', guildId);
-        res.json({ success: true, game: gameEntry });
-        
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.delete('/api/users/:username/library/:gameId', requireDiscordForWrite, async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
-    try {
         await validateGuildAccess(guildId);
         const { username, gameId } = req.params;
         const lib = await loadUserFile(username, 'library.json', { games: [] }, guildId);
@@ -1847,3 +1848,4 @@ process.on('uncaughtException', (error) => {
 });
 
 console.log('📋 Server starting...');
+initDiscord();
