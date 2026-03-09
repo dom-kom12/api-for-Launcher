@@ -1,4 +1,4 @@
-// server.js - POPRAWIONY
+// server.js - POPRAWIONY Z WEBSOCKET
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -6,9 +6,21 @@ const cors = require('cors');
 const crypto = require('crypto');
 const http = require('http');
 const multer = require('multer');
+const { Server } = require('socket.io');
 const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 
 const app = express();
+const server = http.createServer(app);
+
+// Konfiguracja Socket.IO z CORS
+const io = new Server(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000
+});
 
 // Konfiguracja
 const PORT = process.env.PORT || 3000;
@@ -77,6 +89,11 @@ const pendingInvitesCache = new Map();
 const screenshotsCache = new Map();
 const iconsCache = new Map();
 
+// === WEBSOCKET STATE MANAGEMENT ===
+const connectedUsers = new Map(); // socketId -> { username, guildId, status }
+const userSockets = new Map(); // username -> Set<socketId>
+const typingUsers = new Map(); // chatId -> Set<username>
+
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 // === FUNKCJE MULTI-GUILD ===
@@ -115,9 +132,425 @@ async function validateGuildAccess(guildId) {
     return guild;
 }
 
+// === WEBSOCKET EVENT EMITTERS ===
+
+function broadcastToUser(username, event, data) {
+    const sockets = userSockets.get(username);
+    if (!sockets) return;
+    
+    sockets.forEach(socketId => {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+            socket.emit(event, data);
+        }
+    });
+}
+
+function broadcastToGuild(guildId, event, data, excludeUsername = null) {
+    connectedUsers.forEach((userData, socketId) => {
+        if (userData.guildId === guildId && userData.username !== excludeUsername) {
+            const socket = io.sockets.sockets.get(socketId);
+            if (socket) {
+                socket.emit(event, data);
+            }
+        }
+    });
+}
+
+function broadcastToFriends(username, event, data) {
+    // Pobierz znajomych użytkownika i wyślij do nich
+    getUserFriends(username).then(friends => {
+        friends.forEach(friend => {
+            broadcastToUser(friend.username, event, {
+                ...data,
+                friendUsername: username
+            });
+        });
+    }).catch(err => console.error('Błąd broadcastToFriends:', err));
+}
+
+async function getUserFriends(username, guildId = DEFAULT_GUILD_ID) {
+    try {
+        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] }, guildId);
+        return (data.friends || []).map(f => ({ username: f, status: 'online' }));
+    } catch {
+        return [];
+    }
+}
+
+// === SOCKET.IO HANDLERS ===
+
+io.on('connection', (socket) => {
+    console.log(`🔌 Nowe połączenie: ${socket.id}`);
+    
+    // Autentykacja socketu
+    socket.on('authenticate', async (data) => {
+        try {
+            const { token, guildId } = data;
+            const targetGuildId = guildId || DEFAULT_GUILD_ID;
+            
+            // Weryfikacja tokenu
+            let users = {};
+            if (discordReady) {
+                users = await loadGlobalFile('users.json', {}, targetGuildId);
+            } else {
+                users = global.tempUsers || {};
+            }
+            
+            const user = Object.values(users).find(u => u.token === token);
+            
+            if (!user) {
+                socket.emit('auth_error', { message: 'Invalid token' });
+                return;
+            }
+            
+            // Zapisz połączenie
+            connectedUsers.set(socket.id, {
+                username: user.username,
+                guildId: targetGuildId,
+                status: 'online',
+                lastActivity: Date.now()
+            });
+            
+            // Mapowanie użytkownik -> sockety
+            if (!userSockets.has(user.username)) {
+                userSockets.set(user.username, new Set());
+            }
+            userSockets.get(user.username).add(socket.id);
+            
+            socket.authenticated = true;
+            socket.username = user.username;
+            socket.guildId = targetGuildId;
+            
+            socket.emit('authenticated', { 
+                success: true, 
+                username: user.username,
+                guildId: targetGuildId
+            });
+            
+            // Powiadom znajomych o statusie online
+            broadcastToFriends(user.username, 'friend_status_change', {
+                username: user.username,
+                status: 'online',
+                timestamp: new Date().toISOString()
+            });
+            
+            console.log(`✅ Socket autentykowany: ${user.username} (${socket.id})`);
+            
+        } catch (error) {
+            console.error('Błąd autentykacji socket:', error);
+            socket.emit('auth_error', { message: error.message });
+        }
+    });
+    
+    // Zmiana statusu
+    socket.on('status_change', (data) => {
+        if (!socket.authenticated) return;
+        
+        const { status, activity } = data; // status: 'online', 'away', 'dnd', 'invisible'
+        const userData = connectedUsers.get(socket.id);
+        if (!userData) return;
+        
+        userData.status = status;
+        userData.activity = activity;
+        userData.lastActivity = Date.now();
+        
+        // Powiadom znajomych
+        broadcastToFriends(socket.username, 'friend_status_change', {
+            username: socket.username,
+            status: status,
+            activity: activity,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log(`📊 Status ${socket.username}: ${status}`);
+    });
+    
+    // Wysyłanie wiadomości
+    socket.on('send_message', async (data) => {
+        if (!socket.authenticated) return;
+        
+        try {
+            const { toUser, content, tempId } = data;
+            const timestamp = new Date().toISOString();
+            
+            // Zapisz do Discorda
+            if (discordReady) {
+                let chat = await loadChatFile(socket.username, toUser, socket.guildId);
+                if (!chat) chat = { participants: [socket.username, toUser], messages: [] };
+                
+                const messageData = {
+                    id: crypto.randomUUID(),
+                    sender: socket.username,
+                    content: content.trim(),
+                    timestamp: timestamp,
+                    read: false
+                };
+                
+                chat.messages.push(messageData);
+                if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
+                
+                await saveChatFile(socket.username, toUser, chat, socket.guildId);
+                
+                // Wyślij potwierdzenie do nadawcy
+                socket.emit('message_sent', {
+                    tempId: tempId,
+                    messageId: messageData.id,
+                    timestamp: timestamp,
+                    toUser: toUser
+                });
+                
+                // Wyślij do odbiorcy jeśli online
+                broadcastToUser(toUser, 'new_message', {
+                    message: messageData,
+                    fromUser: socket.username,
+                    timestamp: timestamp
+                });
+            }
+            
+        } catch (error) {
+            console.error('Błąd wysyłania wiadomości:', error);
+            socket.emit('message_error', { 
+                tempId: data.tempId,
+                error: error.message 
+            });
+        }
+    });
+    
+    // Typowanie
+    socket.on('typing', (data) => {
+        if (!socket.authenticated) return;
+        
+        const { toUser } = data;
+        const chatId = [socket.username, toUser].sort().join('-');
+        
+        if (!typingUsers.has(chatId)) {
+            typingUsers.set(chatId, new Set());
+        }
+        typingUsers.get(chatId).add(socket.username);
+        
+        // Powiadom odbiorcę
+        broadcastToUser(toUser, 'typing', {
+            fromUser: socket.username,
+            chatId: chatId
+        });
+        
+        // Auto-usunięcie po 5 sekundach
+        setTimeout(() => {
+            if (typingUsers.has(chatId)) {
+                typingUsers.get(chatId).delete(socket.username);
+                if (typingUsers.get(chatId).size === 0) {
+                    typingUsers.delete(chatId);
+                }
+            }
+        }, 5000);
+    });
+    
+    socket.on('stop_typing', (data) => {
+        if (!socket.authenticated) return;
+        
+        const { toUser } = data;
+        const chatId = [socket.username, toUser].sort().join('-');
+        
+        if (typingUsers.has(chatId)) {
+            typingUsers.get(chatId).delete(socket.username);
+            if (typingUsers.get(chatId).size === 0) {
+                typingUsers.delete(chatId);
+            }
+        }
+        
+        broadcastToUser(toUser, 'stop_typing', {
+            fromUser: socket.username,
+            chatId: chatId
+        });
+    });
+    
+    // Zaproszenia do znajomych
+    socket.on('friend_request_sent', async (data) => {
+        if (!socket.authenticated) return;
+        
+        try {
+            const { toUser } = data;
+            
+            if (!discordReady) {
+                socket.emit('friend_error', { message: 'Discord not ready' });
+                return;
+            }
+            
+            const users = await loadGlobalFile('users.json', {}, socket.guildId);
+            if (!users[toUser]) {
+                socket.emit('friend_error', { message: 'User not found' });
+                return;
+            }
+            
+            const toData = await loadUserFile(toUser, 'friends.json', { friends: [], pending: [] }, socket.guildId);
+            
+            if (toData.pending && !toData.pendingInvites) {
+                toData.pendingInvites = toData.pending.map(p => ({
+                    from: p.from,
+                    timestamp: p.at || new Date().toISOString()
+                }));
+                delete toData.pending;
+            }
+            
+            if (!toData.pendingInvites) toData.pendingInvites = [];
+            
+            const alreadyPending = toData.pendingInvites.find(p => p.from === socket.username);
+            const alreadyFriends = (toData.friends || []).includes(socket.username);
+            
+            if (!alreadyPending && !alreadyFriends) {
+                const inviteData = {
+                    from: socket.username,
+                    timestamp: new Date().toISOString()
+                };
+                
+                toData.pendingInvites.push(inviteData);
+                await saveUserFile(toUser, 'friends.json', toData, '👥 Friends', socket.guildId);
+                pendingInvitesCache.set(`${socket.guildId}:${toUser}`, toData.pendingInvites.length);
+                
+                // Powiadom odbiorcę
+                broadcastToUser(toUser, 'friend_request', {
+                    from: socket.username,
+                    timestamp: inviteData.timestamp
+                });
+                
+                socket.emit('friend_request_sent_success', {
+                    toUser: toUser,
+                    timestamp: inviteData.timestamp
+                });
+                
+                // Powiadomienie Discord
+                const embed = new EmbedBuilder()
+                    .setTitle('👥 Nowe zaproszenie do znajomych')
+                    .setDescription(`**${socket.username}** wysłał zaproszenie do **${toUser}**`)
+                    .setColor(0x00d4ff)
+                    .setTimestamp();
+                
+                await sendDiscordNotification(embed, socket.guildId);
+            } else {
+                socket.emit('friend_error', { message: 'Already pending or friends' });
+            }
+            
+        } catch (error) {
+            console.error('Błąd wysyłania zaproszenia:', error);
+            socket.emit('friend_error', { message: error.message });
+        }
+    });
+    
+    // Odpowiedź na zaproszenie
+    socket.on('friend_respond', async (data) => {
+        if (!socket.authenticated) return;
+        
+        try {
+            const { fromUser, accept } = data;
+            
+            if (!discordReady) return;
+            
+            const userData = await loadUserFile(socket.username, 'friends.json', { friends: [], pending: [] }, socket.guildId);
+            const fromData = await loadUserFile(fromUser, 'friends.json', { friends: [], pending: [] }, socket.guildId);
+            
+            if (userData.pending && !userData.pendingInvites) {
+                userData.pendingInvites = userData.pending.map(p => ({
+                    from: p.from,
+                    timestamp: p.at || new Date().toISOString()
+                }));
+                delete userData.pending;
+            }
+            
+            userData.pendingInvites = (userData.pendingInvites || []).filter(p => p.from !== fromUser);
+            
+            if (accept) {
+                if (!userData.friends) userData.friends = [];
+                if (!fromData.friends) fromData.friends = [];
+                
+                if (!userData.friends.includes(fromUser)) userData.friends.push(fromUser);
+                if (!fromData.friends.includes(socket.username)) fromData.friends.push(socket.username);
+                
+                await saveChatFile(socket.username, fromUser, {
+                    participants: [socket.username, fromUser],
+                    messages: []
+                }, socket.guildId);
+                
+                // Powiadom obu użytkowników
+                broadcastToUser(fromUser, 'friend_accepted', {
+                    by: socket.username,
+                    timestamp: new Date().toISOString()
+                });
+                
+                socket.emit('friend_accepted_success', {
+                    friend: fromUser,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            await saveUserFile(socket.username, 'friends.json', userData, '👥 Friends', socket.guildId);
+            await saveUserFile(fromUser, 'friends.json', fromData, '👥 Friends', socket.guildId);
+            await updatePendingInvitesCache(socket.username, socket.guildId);
+            
+        } catch (error) {
+            console.error('Błąd odpowiedzi na zaproszenie:', error);
+            socket.emit('friend_error', { message: error.message });
+        }
+    });
+    
+    // Rozłączenie
+    socket.on('disconnect', (reason) => {
+        console.log(`🔌 Rozłączenie: ${socket.id}, powód: ${reason}`);
+        
+        if (socket.authenticated && socket.username) {
+            // Sprawdź czy użytkownik ma inne aktywne połączenia
+            const userSocketSet = userSockets.get(socket.username);
+            if (userSocketSet) {
+                userSocketSet.delete(socket.id);
+                
+                // Jeśli to było ostatnie połączenie, powiadom znajomych o offline
+                if (userSocketSet.size === 0) {
+                    userSockets.delete(socket.username);
+                    broadcastToFriends(socket.username, 'friend_status_change', {
+                        username: socket.username,
+                        status: 'offline',
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+        }
+        
+        connectedUsers.delete(socket.id);
+    });
+    
+    // Ping/pong dla utrzymania połączenia
+    socket.on('ping', () => {
+        socket.emit('pong');
+    });
+});
+
+// === POWIADOMIENIA O NOWYCH GRACH ===
+
+async function notifyNewGame(gameData, guildId) {
+    // Powiadom wszystkich online użytkowników w guildzie
+    broadcastToGuild(guildId, 'new_game', {
+        game: gameData,
+        timestamp: new Date().toISOString()
+    });
+    
+    // Powiadomienie Discord
+    const embed = new EmbedBuilder()
+        .setTitle(gameData.price === 0 ? '🆓 Nowa darmowa gra!' : '💰 Nowa gra!')
+        .setDescription(`**${gameData.name}**`)
+        .addFields(
+            { name: 'Dev', value: gameData.developer, inline: true },
+            { name: 'Cena', value: gameData.price === 0 ? 'DARMOWE' : `${gameData.price}zł`, inline: true },
+            { name: 'Gatunek', value: gameData.genre, inline: true }
+        )
+        .setColor(parseInt(gameData.color.replace('#', ''), 16))
+        .setTimestamp();
+    
+    await sendDiscordNotification(embed, guildId);
+}
+
 // === START SERWERA HTTP ===
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Serwer HTTP na porcie ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Serwer HTTP + WebSocket na porcie ${PORT}`);
     console.log(`📡 Dozwolone guildy: ${ALLOWED_GUILDS.join(', ')}`);
     startSelfPinger();
 });
@@ -208,6 +641,7 @@ app.get('/', async (req, res) => {
             message: 'Nebula Game Server',
             status: discordReady ? 'online' : 'initializing',
             discordReady: discordReady,
+            websocket: io.engine.clientsCount,
             endpoints: ['/games', '/api/auth/login', '/api/auth/register', '/api/auth/verify']
         });
     }
@@ -222,6 +656,10 @@ app.get('/health', async (req, res) => {
     const response = {
         status: discordReady ? 'OK' : 'INITIALIZING',
         discord: discordReady,
+        websocket: {
+            connectedClients: io.engine.clientsCount,
+            authenticatedUsers: connectedUsers.size
+        },
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         memory: process.memoryUsage(),
@@ -505,7 +943,13 @@ app.post('/api/games/:gameId/comments', async (req, res) => {
         
         await saveGameComments(gameId, comments, guildId);
 
-        // Powiadomienie
+        // Powiadomienie przez WebSocket
+        broadcastToGuild(guildId, 'new_comment', {
+            gameId: gameId,
+            comment: comment
+        });
+
+        // Powiadomienie Discord
         const games = gamesCache.get(guildId) || [];
         const game = games.find(g => g.id === gameId);
         if (game) {
@@ -599,6 +1043,15 @@ app.post('/api/games/:gameId/rate', async (req, res) => {
 
         const allRatings = Object.values(ratings).map(r => r.rating);
         const average = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
+
+        // Powiadomienie WebSocket o nowej ocenie
+        broadcastToGuild(guildId, 'new_rating', {
+            gameId: gameId,
+            username: username,
+            rating: rating,
+            averageRating: Math.round(average * 10) / 10,
+            totalRatings: allRatings.length
+        });
 
         res.json({
             success: true,
@@ -768,7 +1221,7 @@ async function initDiscord() {
                 
                 setInterval(() => {
                     const ping = discordClient.ws.ping;
-                    console.log(`💓 Ping: ${ping}ms | Ready: ${discordReady}`);
+                    console.log(`💓 Ping: ${ping}ms | Ready: ${discordReady} | WS Clients: ${io.engine.clientsCount}`);
                 }, 30000);
                 
                 setInterval(periodicPendingCheck, 30000);
@@ -1315,18 +1768,9 @@ app.post('/api/games', async (req, res) => {
         
         const saved = await saveGame(gameId, gameData, guildId);
         
-        const embed = new EmbedBuilder()
-            .setTitle(price === 0 ? '🆓 Nowa darmowa gra!' : '💰 Nowa gra!')
-            .setDescription(`**${name}**`)
-            .addFields(
-                { name: 'Dev', value: gameData.developer, inline: true },
-                { name: 'Cena', value: price === 0 ? 'DARMOWE' : `${price}zł`, inline: true },
-                { name: 'Gatunek', value: gameData.genre, inline: true }
-            )
-            .setColor(parseInt(gameData.color.replace('#', ''), 16))
-            .setTimestamp();
+        // WebSocket powiadomienie
+        await notifyNewGame(saved, guildId);
         
-        await sendDiscordNotification(embed, guildId);
         res.json({ success: true, game: saved });
         
     } catch (error) {
@@ -1371,19 +1815,15 @@ app.post('/api/auth/register', async (req, res) => {
     try {
         const guildId = req.query.guildId || DEFAULT_GUILD_ID;
         
-        // Sprawdź czy Discord jest gotowy, ale nie wymagaj dla rejestracji
-        // Jeśli nie jest gotowy, używamy domyślnej konfiguracji
         let guildConfig = getGuildConfig(guildId);
         
         const { username, password, email } = req.body;
         if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
         
-        // Wczytaj lub utwórz lokalny cache użytkowników jeśli Discord nie jest gotowy
         let users = {};
         if (discordReady) {
             users = await loadGlobalFile('users.json', {}, guildId);
         } else {
-            // Tymczasowe przechowywanie w pamięci
             users = global.tempUsers || {};
             global.tempUsers = users;
         }
@@ -1534,7 +1974,7 @@ app.get('/api/friends/:username', async (req, res) => {
         const friends = await Promise.all(
             (data.friends || []).map(async (name) => ({
                 username: name, 
-                status: 'online', 
+                status: connectedUsers.has(userSockets.get(name)?.values().next().value) ? 'online' : 'offline',
                 lastSeen: users[name]?.lastLogin
             }))
         );
@@ -1586,12 +2026,19 @@ app.post('/api/friends/add', async (req, res) => {
         const alreadyFriends = (toData.friends || []).includes(fromUser);
         
         if (!alreadyPending && !alreadyFriends) {
-            toData.pendingInvites.push({ 
+            const inviteData = {
                 from: fromUser, 
                 timestamp: new Date().toISOString() 
-            });
+            };
+            toData.pendingInvites.push(inviteData);
             await saveUserFile(toUser, 'friends.json', toData, '👥 Friends', guildId);
             pendingInvitesCache.set(`${guildId}:${toUser}`, toData.pendingInvites.length);
+            
+            // WebSocket powiadomienie
+            broadcastToUser(toUser, 'friend_request', {
+                from: fromUser,
+                timestamp: inviteData.timestamp
+            });
         }
         
         res.json({ success: true });
@@ -1637,6 +2084,17 @@ app.post('/api/friends/respond', async (req, res) => {
                 participants: [username, fromUser], 
                 messages: []
             }, guildId);
+            
+            // WebSocket powiadomienia
+            broadcastToUser(fromUser, 'friend_accepted', {
+                by: username,
+                timestamp: new Date().toISOString()
+            });
+            
+            broadcastToUser(username, 'friend_accepted', {
+                friend: fromUser,
+                timestamp: new Date().toISOString()
+            });
         }
         
         await saveUserFile(username, 'friends.json', userData, '👥 Friends', guildId);
@@ -1713,18 +2171,26 @@ app.post('/api/chat/send', async (req, res) => {
         let chat = await loadChatFile(fromUser, toUser, guildId);
         if (!chat) chat = { participants: [fromUser, toUser], messages: [] };
         
-        chat.messages.push({
+        const messageData = {
             id: crypto.randomUUID(), 
             sender: fromUser,
             content: content.trim(), 
             timestamp: new Date().toISOString(), 
             read: false
-        });
+        };
         
+        chat.messages.push(messageData);
         if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
         
         await saveChatFile(fromUser, toUser, chat, guildId);
-        res.json({ success: true });
+        
+        // WebSocket powiadomienie
+        broadcastToUser(toUser, 'new_message', {
+            message: messageData,
+            fromUser: fromUser
+        });
+        
+        res.json({ success: true, message: messageData });
         
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -1738,7 +2204,6 @@ app.get('/api/users/:username/library', async (req, res) => {
     
     try {
         if (!discordReady) {
-            // Zwróć pustą bibliotekę jeśli Discord nie jest gotowy
             return res.json([]);
         }
         
@@ -1828,6 +2293,12 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
     console.log('🛑 SIGINT received - shutting down gracefully');
     isShuttingDown = true;
+    
+    // Zamknij wszystkie połączenia WebSocket
+    io.close(() => {
+        console.log('🔌 WebSocket server closed');
+    });
+    
     server.close(() => {
         discordClient.destroy();
         process.exit(0);
