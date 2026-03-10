@@ -1,4 +1,4 @@
-// server.js - POPRAWIONY Z WEBSOCKET
+// server.js - ALWAYSDATA WERSJA (poprawiona)
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -7,55 +7,108 @@ const crypto = require('crypto');
 const http = require('http');
 const multer = require('multer');
 const { Server } = require('socket.io');
-const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ChannelType } = require('discord.js');
 
 const app = express();
 const server = http.createServer(app);
 
-// Konfiguracja Socket.IO z CORS
+// WAŻNE DLA ALWAYSDATA - trust proxy
+app.set('trust proxy', 1);
+
+// Konfiguracja Socket.IO z CORS dla zewnętrznych połączeń
 const io = new Server(server, {
     cors: {
         origin: '*',
-        methods: ['GET', 'POST']
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+        credentials: true
     },
     pingTimeout: 60000,
-    pingInterval: 25000
+    pingInterval: 25000,
+    transports: ['websocket', 'polling'] // Ważne dla alwaysdata
 });
 
 // Konfiguracja
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8100;
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+
+// ID kanałów Discord (TYLKO do powiadomień i backupu awaryjnego)
+const NOTIFICATION_CHANNEL_ID = '1477577363285082123';
+const GLOBAL_DATA_CHANNEL_ID = '1477579719435092100'; // Backup awaryjny
 
 // Multi-guild support
 const ALLOWED_GUILDS = process.env.ALLOWED_GUILDS 
     ? process.env.ALLOWED_GUILDS.split(',').map(id => id.trim())
-    : [process.env.GUILD_ID || '1477574526933012541'];
+    : ['1477574526933012541'];
 
 const DEFAULT_GUILD_ID = ALLOWED_GUILDS[0];
-const SCREENSHOTS_CHANNEL_ID = process.env.SCREENSHOTS_CHANNEL_ID || '1479939801385013288';
-const ICONS_CHANNEL_ID = process.env.ICONS_CHANNEL_ID || '1479939801385013288';
 
-// WAŻNE: URL do self-pingu
-const SELF_PING_URL = process.env.SELF_PING_URL || `http://0.0.0.0:${PORT}/health`;
+// Self-ping (używamy localhost dla alwaysdata)
 const PING_INTERVAL = 2 * 60 * 1000;
 
-if (!DISCORD_TOKEN) {
-    console.error('❌ Brak DISCORD_TOKEN! Ustaw w zmiennych środowiskowych.');
-    process.exit(1);
-}
+// Ścieżka lokalna na alwaysdata
+const BASE_PATH = '/home/dom-kom/SYS/TEM';
 
-// Middleware - CORS na początku!
+const PATHS = {
+    base: BASE_PATH,
+    global: path.join(BASE_PATH, 'global'),
+    users: path.join(BASE_PATH, 'users'),
+    chats: path.join(BASE_PATH, 'chats'),
+    screenshots: path.join(BASE_PATH, 'screenshots'),
+    icons: path.join(BASE_PATH, 'icons'),
+    temp: path.join(BASE_PATH, 'temp'),
+    backups: path.join(BASE_PATH, 'backups')
+};
+
+// Middleware CORS - MUSI BYĆ NA POCZĄTKU
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 }));
+
+// Dodatkowe nagłówki dla CORS
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Konfiguracja multer dla uploadu plików
-const storage = multer.memoryStorage();
+// Logowanie requestów (debug)
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} | ${req.method} ${req.path} | IP: ${req.ip} | Origin: ${req.headers.origin || 'none'}`);
+    next();
+});
+
+// Konfiguracja multer dla lokalnego zapisu plików
+const storage = multer.diskStorage({
+    destination: async (req, file, cb) => {
+        const dest = req.path.includes('icon') ? PATHS.icons : PATHS.screenshots;
+        try {
+            await fs.mkdir(dest, { recursive: true });
+            cb(null, dest);
+        } catch (err) {
+            cb(err, dest);
+        }
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, uniqueSuffix + ext);
+    }
+});
+
 const upload = multer({ 
     storage: storage,
     limits: { fileSize: 10 * 1024 * 1024 },
@@ -69,150 +122,286 @@ const upload = multer({
     }
 });
 
-// Discord Client
+// Discord Client (minimalny - tylko powiadomienia)
 const discordClient = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMessages
     ],
-    rest: { timeout: 60000, retries: 3, interval: 3500 },
-    ws: { large_threshold: 250, compress: false }
+    rest: { timeout: 60000, retries: 3 }
 });
 
 let discordReady = false;
 let isShuttingDown = false;
-const userChannelsCache = new Map();
+
+// Cache w pamięci
 const gamesCache = new Map();
-const pendingInvitesCache = new Map();
-const screenshotsCache = new Map();
-const iconsCache = new Map();
+const connectedUsers = new Map();
+const userSockets = new Map();
+const typingUsers = new Map();
 
-// === WEBSOCKET STATE MANAGEMENT ===
-const connectedUsers = new Map(); // socketId -> { username, guildId, status }
-const userSockets = new Map(); // username -> Set<socketId>
-const typingUsers = new Map(); // chatId -> Set<username>
+// === FUNKCJE LOKALNEGO STORAGE ===
 
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-
-// === FUNKCJE MULTI-GUILD ===
-
-function getGuildConfig(guildId) {
-    const configs = {
-        '1477574526933012541': {
-            storageCategoryId: '1477579473611128843',
-            notificationChannelId: '1477577363285082123',
-            gamesChannelId: process.env.GAMES_CHANNEL_ID || null,
-            screenshotsChannelId: SCREENSHOTS_CHANNEL_ID,
-            iconsChannelId: ICONS_CHANNEL_ID
+async function initLocalStorage() {
+    console.log('📁 Inicjalizacja lokalnego storage...');
+    console.log(`📂 Ścieżka bazowa: ${BASE_PATH}`);
+    
+    try {
+        for (const [key, dirPath] of Object.entries(PATHS)) {
+            await fs.mkdir(dirPath, { recursive: true });
+            console.log(`  ✓ ${key}: ${dirPath}`);
         }
-    };
-    return configs[guildId] || configs[DEFAULT_GUILD_ID];
+        
+        await initGlobalFiles();
+        
+        console.log('✅ Lokalny storage gotowy');
+        return true;
+    } catch (error) {
+        console.error('❌ Błąd inicjalizacji storage:', error);
+        await sendEmergencyNotification(`🚨 Błąd inicjalizacji lokalnego storage: ${error.message}`);
+        return false;
+    }
 }
 
-async function getGuild(guildId) {
-    if (!discordReady) throw new Error('Discord not ready');
+async function initGlobalFiles() {
+    const globalFiles = {
+        'users.json': {},
+        'games.json': [],
+        'comments.json': {},
+        'ratings.json': {},
+        'screenshots.json': [],
+        'icons.json': []
+    };
+    
+    for (const [filename, defaultData] of Object.entries(globalFiles)) {
+        const filepath = path.join(PATHS.global, filename);
+        try {
+            await fs.access(filepath);
+        } catch {
+            await fs.writeFile(filepath, JSON.stringify(defaultData, null, 2));
+            console.log(`  📝 Utworzono: ${filename}`);
+        }
+    }
+}
+
+// Podstawowe operacje na plikach
+async function saveLocalFile(filepath, data) {
+    const dir = path.dirname(filepath);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(filepath, JSON.stringify(data, null, 2));
+}
+
+async function loadLocalFile(filepath, defaultData = null) {
     try {
-        return await discordClient.guilds.fetch(guildId);
+        const content = await fs.readFile(filepath, 'utf-8');
+        return JSON.parse(content);
+    } catch {
+        return defaultData;
+    }
+}
+
+// === FUNKCJE UŻYTKOWNIKÓW ===
+
+async function ensureUserDir(username) {
+    const userDir = path.join(PATHS.users, username);
+    await fs.mkdir(userDir, { recursive: true });
+    
+    const subdirs = ['library', 'friends', 'settings'];
+    for (const sub of subdirs) {
+        await fs.mkdir(path.join(userDir, sub), { recursive: true });
+    }
+    
+    return userDir;
+}
+
+async function saveUserFile(username, filename, data) {
+    await ensureUserDir(username);
+    const filepath = path.join(PATHS.users, username, filename);
+    await saveLocalFile(filepath, data);
+    return filepath;
+}
+
+async function loadUserFile(username, filename, defaultData = {}) {
+    const filepath = path.join(PATHS.users, username, filename);
+    return await loadLocalFile(filepath, defaultData);
+}
+
+// === FUNKCJE GLOBALNE ===
+
+async function saveGlobalFile(filename, data) {
+    const filepath = path.join(PATHS.global, filename);
+    await saveLocalFile(filepath, data);
+    
+    // Backup awaryjny na Discord jeśli to krytyczny plik
+    if (discordReady && ['users.json', 'games.json'].includes(filename)) {
+        try {
+            await backupToGlobalData(filename, data);
+        } catch (err) {
+            console.log('⚠️ Backup na Discord nie powiódł się:', err.message);
+        }
+    }
+    
+    return filepath;
+}
+
+async function loadGlobalFile(filename, defaultData = {}) {
+    const filepath = path.join(PATHS.global, filename);
+    let data = await loadLocalFile(filepath, null);
+    
+    if (data === null && discordReady) {
+        try {
+            data = await restoreFromGlobalData(filename);
+            if (data) {
+                await saveLocalFile(filepath, data);
+                console.log(`📥 Przywrócono ${filename} z backupu Discord`);
+            }
+        } catch (err) {
+            console.log('⚠️ Przywracanie z Discord nie powiodło się:', err.message);
+        }
+    }
+    
+    return data !== null ? data : defaultData;
+}
+
+// === FUNKCJE CZATU ===
+
+async function saveChatFile(user1, user2, data) {
+    const sorted = [user1, user2].sort();
+    const chatId = `${sorted[0]}_and_${sorted[1]}`;
+    const filepath = path.join(PATHS.chats, `${chatId}.json`);
+    await saveLocalFile(filepath, data);
+    return chatId;
+}
+
+async function loadChatFile(user1, user2) {
+    const sorted = [user1, user2].sort();
+    const chatId = `${sorted[0]}_and_${sorted[1]}`;
+    const filepath = path.join(PATHS.chats, `${chatId}.json`);
+    return await loadLocalFile(filepath, { participants: [user1, user2], messages: [] });
+}
+
+// === BACKUP AWARYJNY NA DISCORD ===
+
+async function backupToGlobalData(filename, data) {
+    if (!discordReady) return;
+    
+    try {
+        const channel = await discordClient.channels.fetch(GLOBAL_DATA_CHANNEL_ID);
+        if (!channel) return;
+        
+        const messages = await channel.messages.fetch({ limit: 50 });
+        const oldMessages = messages.filter(m => 
+            m.content.includes(`[BACKUP] ${filename}`)
+        );
+        
+        for (const msg of oldMessages.values()) {
+            await msg.delete().catch(() => {});
+        }
+        
+        const { AttachmentBuilder } = require('discord.js');
+        const buffer = Buffer.from(JSON.stringify(data, null, 2));
+        const attachment = new AttachmentBuilder(buffer, { name: filename });
+        
+        await channel.send({
+            content: `[BACKUP] ${filename} | ${new Date().toISOString()}`,
+            files: [attachment]
+        });
+        
+        console.log(`☁️ Backup ${filename} wysłany na Discord`);
     } catch (error) {
-        console.error(`❌ Nie można pobrać guild ${guildId}:`, error.message);
+        console.error('❌ Błąd backupu:', error.message);
+    }
+}
+
+async function restoreFromGlobalData(filename) {
+    if (!discordReady) return null;
+    
+    try {
+        const channel = await discordClient.channels.fetch(GLOBAL_DATA_CHANNEL_ID);
+        if (!channel) return null;
+        
+        const messages = await channel.messages.fetch({ limit: 50 });
+        const backupMsg = messages.find(m => 
+            m.content.includes(`[BACKUP] ${filename}`) &&
+            m.attachments.size > 0
+        );
+        
+        if (!backupMsg) return null;
+        
+        const attachment = backupMsg.attachments.first();
+        const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+        const response = await fetch(attachment.url);
+        const data = await response.json();
+        
+        return data;
+    } catch (error) {
+        console.error('❌ Błąd przywracania:', error.message);
         return null;
     }
 }
 
-async function validateGuildAccess(guildId) {
-    if (!ALLOWED_GUILDS.includes(guildId)) {
-        throw new Error('Guild not authorized');
-    }
-    const guild = await getGuild(guildId);
-    if (!guild) {
-        throw new Error('Guild not found or bot not member');
-    }
-    return guild;
-}
+// === POWIADOMIENIA DISCORD (Z OBSŁUGĄ BŁĘDÓW) ===
 
-// === WEBSOCKET EVENT EMITTERS ===
-
-function broadcastToUser(username, event, data) {
-    const sockets = userSockets.get(username);
-    if (!sockets) return;
+async function sendDiscordNotification(embed) {
+    if (!discordReady) {
+        console.log('ℹ️ Discord nie gotowy - pominięto powiadomienie');
+        return;
+    }
     
-    sockets.forEach(socketId => {
-        const socket = io.sockets.sockets.get(socketId);
-        if (socket) {
-            socket.emit(event, data);
-        }
-    });
-}
-
-function broadcastToGuild(guildId, event, data, excludeUsername = null) {
-    connectedUsers.forEach((userData, socketId) => {
-        if (userData.guildId === guildId && userData.username !== excludeUsername) {
-            const socket = io.sockets.sockets.get(socketId);
-            if (socket) {
-                socket.emit(event, data);
-            }
-        }
-    });
-}
-
-function broadcastToFriends(username, event, data) {
-    // Pobierz znajomych użytkownika i wyślij do nich
-    getUserFriends(username).then(friends => {
-        friends.forEach(friend => {
-            broadcastToUser(friend.username, event, {
-                ...data,
-                friendUsername: username
-            });
-        });
-    }).catch(err => console.error('Błąd broadcastToFriends:', err));
-}
-
-async function getUserFriends(username, guildId = DEFAULT_GUILD_ID) {
     try {
-        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] }, guildId);
-        return (data.friends || []).map(f => ({ username: f, status: 'online' }));
-    } catch {
-        return [];
+        const channel = await discordClient.channels.fetch(NOTIFICATION_CHANNEL_ID);
+        if (!channel) {
+            console.log('⚠️ Kanał powiadomień nie znaleziony (ID:', NOTIFICATION_CHANNEL_ID, ')');
+            return;
+        }
+        
+        await channel.send({ embeds: [embed] });
+        console.log('📨 Wysłano powiadomienie Discord');
+    } catch (error) {
+        console.log('⚠️ Błąd powiadomienia Discord:', error.message);
+        // NIE RZUCAMY BŁĘDU - rejestracja ma działać bez Discorda!
     }
 }
 
-// === SOCKET.IO HANDLERS ===
+async function sendEmergencyNotification(message) {
+    if (!discordReady) return;
+    
+    try {
+        const channel = await discordClient.channels.fetch(NOTIFICATION_CHANNEL_ID);
+        if (!channel) return;
+        
+        await channel.send(`🚨 **AWARIA SYSTEMU**\n${message}\nCzas: ${new Date().toISOString()}`);
+    } catch (error) {
+        console.error('❌ Błąd powiadomienia awaryjnego:', error.message);
+    }
+}
+
+// === WEBSOCKET ===
 
 io.on('connection', (socket) => {
-    console.log(`🔌 Nowe połączenie: ${socket.id}`);
+    console.log(`🔌 Nowe połączenie: ${socket.id} | Transport: ${socket.conn.transport.name}`);
     
-    // Autentykacja socketu
     socket.on('authenticate', async (data) => {
         try {
+            console.log('🔐 Próba autentykacji:', data);
             const { token, guildId } = data;
-            const targetGuildId = guildId || DEFAULT_GUILD_ID;
             
-            // Weryfikacja tokenu
-            let users = {};
-            if (discordReady) {
-                users = await loadGlobalFile('users.json', {}, targetGuildId);
-            } else {
-                users = global.tempUsers || {};
-            }
-            
+            const users = await loadGlobalFile('users.json', {});
             const user = Object.values(users).find(u => u.token === token);
             
             if (!user) {
+                console.log('❌ Autentykacja nieudana - nieprawidłowy token');
                 socket.emit('auth_error', { message: 'Invalid token' });
                 return;
             }
             
-            // Zapisz połączenie
             connectedUsers.set(socket.id, {
                 username: user.username,
-                guildId: targetGuildId,
+                guildId: guildId || DEFAULT_GUILD_ID,
                 status: 'online',
                 lastActivity: Date.now()
             });
             
-            // Mapowanie użytkownik -> sockety
             if (!userSockets.has(user.username)) {
                 userSockets.set(user.username, new Set());
             }
@@ -220,128 +409,100 @@ io.on('connection', (socket) => {
             
             socket.authenticated = true;
             socket.username = user.username;
-            socket.guildId = targetGuildId;
+            socket.guildId = guildId || DEFAULT_GUILD_ID;
             
             socket.emit('authenticated', { 
                 success: true, 
                 username: user.username,
-                guildId: targetGuildId
+                guildId: socket.guildId
             });
             
-            // Powiadom znajomych o statusie online
             broadcastToFriends(user.username, 'friend_status_change', {
                 username: user.username,
                 status: 'online',
                 timestamp: new Date().toISOString()
             });
             
-            console.log(`✅ Socket autentykowany: ${user.username} (${socket.id})`);
+            console.log(`✅ Socket autentykowany: ${user.username}`);
             
         } catch (error) {
-            console.error('Błąd autentykacji socket:', error);
+            console.error('❌ Błąd autentykacji:', error);
             socket.emit('auth_error', { message: error.message });
         }
     });
     
-    // Zmiana statusu
     socket.on('status_change', (data) => {
         if (!socket.authenticated) return;
         
-        const { status, activity } = data; // status: 'online', 'away', 'dnd', 'invisible'
         const userData = connectedUsers.get(socket.id);
         if (!userData) return;
         
-        userData.status = status;
-        userData.activity = activity;
-        userData.lastActivity = Date.now();
+        userData.status = data.status;
+        userData.activity = data.activity;
         
-        // Powiadom znajomych
         broadcastToFriends(socket.username, 'friend_status_change', {
             username: socket.username,
-            status: status,
-            activity: activity,
+            status: data.status,
+            activity: data.activity,
             timestamp: new Date().toISOString()
         });
-        
-        console.log(`📊 Status ${socket.username}: ${status}`);
     });
     
-    // Wysyłanie wiadomości
     socket.on('send_message', async (data) => {
         if (!socket.authenticated) return;
         
         try {
             const { toUser, content, tempId } = data;
-            const timestamp = new Date().toISOString();
             
-            // Zapisz do Discorda
-            if (discordReady) {
-                let chat = await loadChatFile(socket.username, toUser, socket.guildId);
-                if (!chat) chat = { participants: [socket.username, toUser], messages: [] };
-                
-                const messageData = {
-                    id: crypto.randomUUID(),
-                    sender: socket.username,
-                    content: content.trim(),
-                    timestamp: timestamp,
-                    read: false
-                };
-                
-                chat.messages.push(messageData);
-                if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
-                
-                await saveChatFile(socket.username, toUser, chat, socket.guildId);
-                
-                // Wyślij potwierdzenie do nadawcy
-                socket.emit('message_sent', {
-                    tempId: tempId,
-                    messageId: messageData.id,
-                    timestamp: timestamp,
-                    toUser: toUser
-                });
-                
-                // Wyślij do odbiorcy jeśli online
-                broadcastToUser(toUser, 'new_message', {
-                    message: messageData,
-                    fromUser: socket.username,
-                    timestamp: timestamp
-                });
-            }
+            let chat = await loadChatFile(socket.username, toUser);
+            const messageData = {
+                id: crypto.randomUUID(),
+                sender: socket.username,
+                content: content.trim(),
+                timestamp: new Date().toISOString(),
+                read: false
+            };
+            
+            chat.messages.push(messageData);
+            if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
+            
+            await saveChatFile(socket.username, toUser, chat);
+            
+            socket.emit('message_sent', {
+                tempId: tempId,
+                messageId: messageData.id,
+                timestamp: messageData.timestamp,
+                toUser: toUser
+            });
+            
+            broadcastToUser(toUser, 'new_message', {
+                message: messageData,
+                fromUser: socket.username
+            });
             
         } catch (error) {
-            console.error('Błąd wysyłania wiadomości:', error);
-            socket.emit('message_error', { 
-                tempId: data.tempId,
-                error: error.message 
-            });
+            socket.emit('message_error', { tempId: data.tempId, error: error.message });
         }
     });
     
-    // Typowanie
     socket.on('typing', (data) => {
         if (!socket.authenticated) return;
         
-        const { toUser } = data;
-        const chatId = [socket.username, toUser].sort().join('-');
-        
+        const chatId = [socket.username, data.toUser].sort().join('-');
         if (!typingUsers.has(chatId)) {
             typingUsers.set(chatId, new Set());
         }
         typingUsers.get(chatId).add(socket.username);
         
-        // Powiadom odbiorcę
-        broadcastToUser(toUser, 'typing', {
+        broadcastToUser(data.toUser, 'typing', {
             fromUser: socket.username,
             chatId: chatId
         });
         
-        // Auto-usunięcie po 5 sekundach
         setTimeout(() => {
             if (typingUsers.has(chatId)) {
                 typingUsers.get(chatId).delete(socket.username);
-                if (typingUsers.get(chatId).size === 0) {
-                    typingUsers.delete(chatId);
-                }
+                if (typingUsers.get(chatId).size === 0) typingUsers.delete(chatId);
             }
         }, 5000);
     });
@@ -349,113 +510,91 @@ io.on('connection', (socket) => {
     socket.on('stop_typing', (data) => {
         if (!socket.authenticated) return;
         
-        const { toUser } = data;
-        const chatId = [socket.username, toUser].sort().join('-');
-        
+        const chatId = [socket.username, data.toUser].sort().join('-');
         if (typingUsers.has(chatId)) {
             typingUsers.get(chatId).delete(socket.username);
-            if (typingUsers.get(chatId).size === 0) {
-                typingUsers.delete(chatId);
-            }
+            if (typingUsers.get(chatId).size === 0) typingUsers.delete(chatId);
         }
         
-        broadcastToUser(toUser, 'stop_typing', {
+        broadcastToUser(data.toUser, 'stop_typing', {
             fromUser: socket.username,
             chatId: chatId
         });
     });
     
-    // Zaproszenia do znajomych
     socket.on('friend_request_sent', async (data) => {
         if (!socket.authenticated) return;
         
         try {
             const { toUser } = data;
+            const users = await loadGlobalFile('users.json', {});
             
-            if (!discordReady) {
-                socket.emit('friend_error', { message: 'Discord not ready' });
-                return;
-            }
-            
-            const users = await loadGlobalFile('users.json', {}, socket.guildId);
             if (!users[toUser]) {
                 socket.emit('friend_error', { message: 'User not found' });
                 return;
             }
             
-            const toData = await loadUserFile(toUser, 'friends.json', { friends: [], pending: [] }, socket.guildId);
+            const toData = await loadUserFile(toUser, 'friends/friends.json', { friends: [], pendingInvites: [] });
             
-            if (toData.pending && !toData.pendingInvites) {
-                toData.pendingInvites = toData.pending.map(p => ({
-                    from: p.from,
-                    timestamp: p.at || new Date().toISOString()
-                }));
-                delete toData.pending;
-            }
-            
-            if (!toData.pendingInvites) toData.pendingInvites = [];
-            
-            const alreadyPending = toData.pendingInvites.find(p => p.from === socket.username);
-            const alreadyFriends = (toData.friends || []).includes(socket.username);
+            const alreadyPending = toData.pendingInvites?.find(p => p.from === socket.username);
+            const alreadyFriends = toData.friends?.includes(socket.username);
             
             if (!alreadyPending && !alreadyFriends) {
-                const inviteData = {
+                if (!toData.pendingInvites) toData.pendingInvites = [];
+                toData.pendingInvites.push({
                     from: socket.username,
                     timestamp: new Date().toISOString()
-                };
+                });
                 
-                toData.pendingInvites.push(inviteData);
-                await saveUserFile(toUser, 'friends.json', toData, '👥 Friends', socket.guildId);
-                pendingInvitesCache.set(`${socket.guildId}:${toUser}`, toData.pendingInvites.length);
+                await saveUserFile(toUser, 'friends/friends.json', toData);
                 
-                // Powiadom odbiorcę
                 broadcastToUser(toUser, 'friend_request', {
                     from: socket.username,
-                    timestamp: inviteData.timestamp
+                    timestamp: new Date().toISOString()
                 });
                 
-                socket.emit('friend_request_sent_success', {
-                    toUser: toUser,
-                    timestamp: inviteData.timestamp
+                socket.emit('friend_request_sent_success', { 
+                    toUser, 
+                    timestamp: new Date().toISOString() 
                 });
                 
-                // Powiadomienie Discord
-                const embed = new EmbedBuilder()
-                    .setTitle('👥 Nowe zaproszenie do znajomych')
-                    .setDescription(`**${socket.username}** wysłał zaproszenie do **${toUser}**`)
-                    .setColor(0x00d4ff)
-                    .setTimestamp();
-                
-                await sendDiscordNotification(embed, socket.guildId);
+                // Powiadomienie Discord (nie blokujące)
+                try {
+                    const { EmbedBuilder } = require('discord.js');
+                    const embed = new EmbedBuilder()
+                        .setTitle('👥 Nowe zaproszenie')
+                        .setDescription(`**${socket.username}** → **${toUser}**`)
+                        .setColor(0x00d4ff)
+                        .setTimestamp();
+                    
+                    await sendDiscordNotification(embed);
+                } catch (err) {
+                    console.log('Powiadomienie Discord nie wysłane:', err.message);
+                }
             } else {
                 socket.emit('friend_error', { message: 'Already pending or friends' });
             }
             
         } catch (error) {
-            console.error('Błąd wysyłania zaproszenia:', error);
             socket.emit('friend_error', { message: error.message });
         }
     });
     
-    // Odpowiedź na zaproszenie
     socket.on('friend_respond', async (data) => {
         if (!socket.authenticated) return;
         
         try {
             const { fromUser, accept } = data;
             
-            if (!discordReady) return;
+            const userData = await loadUserFile(socket.username, 'friends/friends.json', { 
+                friends: [], 
+                pendingInvites: [] 
+            });
             
-            const userData = await loadUserFile(socket.username, 'friends.json', { friends: [], pending: [] }, socket.guildId);
-            const fromData = await loadUserFile(fromUser, 'friends.json', { friends: [], pending: [] }, socket.guildId);
-            
-            if (userData.pending && !userData.pendingInvites) {
-                userData.pendingInvites = userData.pending.map(p => ({
-                    from: p.from,
-                    timestamp: p.at || new Date().toISOString()
-                }));
-                delete userData.pending;
-            }
+            const fromData = await loadUserFile(fromUser, 'friends/friends.json', { 
+                friends: [], 
+                pendingInvites: [] 
+            });
             
             userData.pendingInvites = (userData.pendingInvites || []).filter(p => p.from !== fromUser);
             
@@ -469,42 +608,30 @@ io.on('connection', (socket) => {
                 await saveChatFile(socket.username, fromUser, {
                     participants: [socket.username, fromUser],
                     messages: []
-                }, socket.guildId);
+                });
                 
-                // Powiadom obu użytkowników
                 broadcastToUser(fromUser, 'friend_accepted', {
                     by: socket.username,
                     timestamp: new Date().toISOString()
                 });
-                
-                socket.emit('friend_accepted_success', {
-                    friend: fromUser,
-                    timestamp: new Date().toISOString()
-                });
             }
             
-            await saveUserFile(socket.username, 'friends.json', userData, '👥 Friends', socket.guildId);
-            await saveUserFile(fromUser, 'friends.json', fromData, '👥 Friends', socket.guildId);
-            await updatePendingInvitesCache(socket.username, socket.guildId);
+            await saveUserFile(socket.username, 'friends/friends.json', userData);
+            await saveUserFile(fromUser, 'friends/friends.json', fromData);
             
         } catch (error) {
-            console.error('Błąd odpowiedzi na zaproszenie:', error);
             socket.emit('friend_error', { message: error.message });
         }
     });
     
-    // Rozłączenie
     socket.on('disconnect', (reason) => {
         console.log(`🔌 Rozłączenie: ${socket.id}, powód: ${reason}`);
         
         if (socket.authenticated && socket.username) {
-            // Sprawdź czy użytkownik ma inne aktywne połączenia
-            const userSocketSet = userSockets.get(socket.username);
-            if (userSocketSet) {
-                userSocketSet.delete(socket.id);
-                
-                // Jeśli to było ostatnie połączenie, powiadom znajomych o offline
-                if (userSocketSet.size === 0) {
+            const sockets = userSockets.get(socket.username);
+            if (sockets) {
+                sockets.delete(socket.id);
+                if (sockets.size === 0) {
                     userSockets.delete(socket.username);
                     broadcastToFriends(socket.username, 'friend_status_change', {
                         username: socket.username,
@@ -514,1237 +641,146 @@ io.on('connection', (socket) => {
                 }
             }
         }
-        
         connectedUsers.delete(socket.id);
     });
     
-    // Ping/pong dla utrzymania połączenia
-    socket.on('ping', () => {
-        socket.emit('pong');
-    });
+    socket.on('ping', () => socket.emit('pong'));
 });
 
-// === POWIADOMIENIA O NOWYCH GRACH ===
-
-async function notifyNewGame(gameData, guildId) {
-    // Powiadom wszystkich online użytkowników w guildzie
-    broadcastToGuild(guildId, 'new_game', {
-        game: gameData,
-        timestamp: new Date().toISOString()
+// Funkcje broadcast
+function broadcastToUser(username, event, data) {
+    const sockets = userSockets.get(username);
+    if (!sockets) return;
+    
+    sockets.forEach(socketId => {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) socket.emit(event, data);
     });
-    
-    // Powiadomienie Discord
-    const embed = new EmbedBuilder()
-        .setTitle(gameData.price === 0 ? '🆓 Nowa darmowa gra!' : '💰 Nowa gra!')
-        .setDescription(`**${gameData.name}**`)
-        .addFields(
-            { name: 'Dev', value: gameData.developer, inline: true },
-            { name: 'Cena', value: gameData.price === 0 ? 'DARMOWE' : `${gameData.price}zł`, inline: true },
-            { name: 'Gatunek', value: gameData.genre, inline: true }
-        )
-        .setColor(parseInt(gameData.color.replace('#', ''), 16))
-        .setTimestamp();
-    
-    await sendDiscordNotification(embed, guildId);
 }
 
-// === START SERWERA HTTP ===
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Serwer HTTP + WebSocket na porcie ${PORT}`);
-    console.log(`📡 Dozwolone guildy: ${ALLOWED_GUILDS.join(', ')}`);
-    startSelfPinger();
-});
-
-server.keepAliveTimeout = 120000;
-server.headersTimeout = 120000;
-
-// === SELF-PINGER ===
-function startSelfPinger() {
-    setInterval(async () => {
-        if (isShuttingDown) return;
-        try {
-            const response = await fetch(SELF_PING_URL);
-            const data = await response.json();
-            console.log(`🔄 Self-ping OK | Status: ${data.status}`);
-        } catch (error) {
-            console.error('❌ Self-ping failed:', error.message);
-        }
-    }, PING_INTERVAL);
-}
-
-// === SERWOWANIE PLIKÓW STATYCZNYCH ===
-
-app.get('/admin.html', async (req, res) => {
-    try {
-        const adminPath = path.join(__dirname, 'admin.html');
-        const html = await fs.readFile(adminPath, 'utf-8');
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
-    } catch (error) {
-        res.status(500).send(`Błąd: ${error.message}`);
-    }
-});
-
-app.get('/game.html', async (req, res) => {
-    try {
-        const gamePath = path.join(__dirname, 'game.html');
-        const html = await fs.readFile(gamePath, 'utf-8');
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
-    } catch (error) {
-        res.status(500).send(`Błąd: ${error.message}`);
-    }
-});
-
-app.get('/login.html', async (req, res) => {
-    try {
-        const loginPath = path.join(__dirname, 'login.html');
-        const html = await fs.readFile(loginPath, 'utf-8');
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
-    } catch (error) {
-        res.status(500).send(`Błąd: ${error.message}`);
-    }
-});
-
-app.get('/friends.html', async (req, res) => {
-    try {
-        const friendsPath = path.join(__dirname, 'friends.html');
-        const html = await fs.readFile(friendsPath, 'utf-8');
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
-    } catch (error) {
-        res.status(500).send(`Błąd: ${error.message}`);
-    }
-});
-
-app.get('/library.html', async (req, res) => {
-    try {
-        const libraryPath = path.join(__dirname, 'library.html');
-        const html = await fs.readFile(libraryPath, 'utf-8');
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
-    } catch (error) {
-        res.status(500).send(`Błąd: ${error.message}`);
-    }
-});
-
-// Strona główna
-app.get('/', async (req, res) => {
-    try {
-        const indexPath = path.join(__dirname, 'index.html');
-        const html = await fs.readFile(indexPath, 'utf-8');
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
-    } catch (error) {
-        res.json({ 
-            message: 'Nebula Game Server',
-            status: discordReady ? 'online' : 'initializing',
-            discordReady: discordReady,
-            websocket: io.engine.clientsCount,
-            endpoints: ['/games', '/api/auth/login', '/api/auth/register', '/api/auth/verify']
+function broadcastToFriends(username, event, data) {
+    loadUserFile(username, 'friends/friends.json', { friends: [] }).then(friendsData => {
+        (friendsData.friends || []).forEach(friend => {
+            broadcastToUser(friend, event, { ...data, friendUsername: username });
         });
-    }
-});
+    }).catch(err => console.error('Błąd broadcastToFriends:', err));
+}
 
-// === ENDPOINTY ===
+function broadcastToGuild(guildId, event, data) {
+    connectedUsers.forEach((userData, socketId) => {
+        if (userData.guildId === guildId) {
+            const socket = io.sockets.sockets.get(socketId);
+            if (socket) socket.emit(event, data);
+        }
+    });
+}
 
+// === ENDPOINTY HTTP ===
+
+// Health check - WAŻNY dla alwaysdata!
 app.get('/health', async (req, res) => {
     const username = req.query.username;
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
     
     const response = {
-        status: discordReady ? 'OK' : 'INITIALIZING',
+        status: 'OK',
         discord: discordReady,
+        localStorage: true,
+        basePath: BASE_PATH,
         websocket: {
             connectedClients: io.engine.clientsCount,
             authenticatedUsers: connectedUsers.size
         },
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        pid: process.pid,
-        guildsReady: [],
-        currentGuild: guildId
+        memory: process.memoryUsage()
     };
 
-    if (discordReady) {
-        for (const gid of ALLOWED_GUILDS) {
-            try {
-                const guild = await getGuild(gid);
-                if (guild) {
-                    response.guildsReady.push({
-                        id: gid,
-                        name: guild.name,
-                        memberCount: guild.memberCount
-                    });
-                }
-            } catch (e) {
-                console.error(`Błąd health check dla ${gid}:`, e.message);
-            }
-        }
-    }
-
-    if (username && discordReady) {
+    if (username) {
         try {
-            const hasPending = await checkUserPendingInvites(username, guildId);
-            response.hasPendingInvites = hasPending;
-            response.pendingInvitesCount = await getPendingInvitesCount(username, guildId);
-        } catch (error) {
-            console.error(`Błąd sprawdzania zaproszeń:`, error);
+            const data = await loadUserFile(username, 'friends/friends.json', { pendingInvites: [] });
+            response.hasPendingInvites = (data.pendingInvites || []).length > 0;
+            response.pendingInvitesCount = (data.pendingInvites || []).length;
+        } catch (e) {
+            response.friendsError = e.message;
         }
     }
     
     res.json(response);
 });
 
-// Middleware do wymagania Discorda (pomija auth)
-function requireDiscordForWrite(req, res, next) {
-    // Pomijamy dla endpointów auth
-    if (req.path.includes('/api/auth/')) {
-        return next();
-    }
-    if (!discordReady) {
-        return res.status(503).json({ error: 'Discord not ready', retryAfter: 5 });
-    }
-    next();
-}
+// Test CORS
+app.get('/test', (req, res) => {
+    res.json({ 
+        message: 'CORS działa!', 
+        origin: req.headers.origin,
+        time: new Date().toISOString()
+    });
+});
 
-app.use(requireDiscordForWrite);
-
-// === UPLOAD PLIKÓW DO DISCORDA ===
-
-// Upload ikony gry
-app.post('/api/upload/icon', upload.single('icon'), async (req, res) => {
+// Serwowanie plików statycznych
+app.get('/', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const guild = await getGuild(guildId);
-        const config = getGuildConfig(guildId);
-        
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
-        }
-
-        const iconsChannel = await guild.channels.fetch(config.iconsChannelId || SCREENSHOTS_CHANNEL_ID);
-        
-        const attachment = new AttachmentBuilder(req.file.buffer, { 
-            name: `icon_${Date.now()}_${req.file.originalname}` 
-        });
-        
-        const message = await iconsChannel.send({
-            content: `🎮 Icon upload | ${req.file.mimetype} | ${(req.file.size / 1024).toFixed(1)}KB`,
-            files: [attachment]
-        });
-
-        const url = message.attachments.first().url;
-        const iconId = crypto.randomUUID();
-        
-        iconsCache.set(iconId, {
-            url: url,
-            filename: req.file.originalname,
-            uploadedAt: new Date().toISOString()
-        });
-
+        const indexPath = path.join(__dirname, 'index.html');
+        const html = await fs.readFile(indexPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch {
         res.json({ 
-            success: true, 
-            url: url,
-            iconId: iconId,
-            message: 'Icon uploaded successfully'
+            message: 'Nebula Game Server',
+            status: 'online',
+            discord: discordReady,
+            endpoints: ['/games', '/api/auth/login', '/api/auth/register', '/health']
         });
-
-    } catch (error) {
-        console.error('❌ Icon upload error:', error);
-        res.status(500).json({ error: error.message });
     }
 });
 
-// Upload screenshotów
-app.post('/api/upload/screenshot', upload.single('screenshot'), async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const gameId = req.query.gameId;
-        
-        const guild = await getGuild(guildId);
-        
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
-        }
-
-        const screenshotsChannel = await guild.channels.fetch(SCREENSHOTS_CHANNEL_ID);
-        
-        const attachment = new AttachmentBuilder(req.file.buffer, { 
-            name: `screenshot_${gameId || 'general'}_${Date.now()}_${req.file.originalname}` 
-        });
-        
-        const message = await screenshotsChannel.send({
-            content: `📸 Screenshot | Gra: ${gameId || 'unknown'} | ${req.file.mimetype}`,
-            files: [attachment]
-        });
-
-        const url = message.attachments.first().url;
-        const screenshotId = crypto.randomUUID();
-        
-        const screenshotData = {
-            id: screenshotId,
-            url: url,
-            gameId: gameId || null,
-            filename: req.file.originalname,
-            uploadedAt: new Date().toISOString(),
-            uploadedBy: req.headers['x-username'] || 'unknown'
-        };
-
-        screenshotsCache.set(screenshotId, screenshotData);
-        await saveScreenshotsIndex(guildId);
-
-        res.json({ 
-            success: true, 
-            url: url,
-            screenshotId: screenshotId,
-            message: 'Screenshot uploaded successfully'
-        });
-
-    } catch (error) {
-        console.error('❌ Screenshot upload error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Upload wielu screenshotów naraz
-app.post('/api/upload/screenshots', upload.array('screenshots', 10), async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const gameId = req.query.gameId;
-        
-        const guild = await getGuild(guildId);
-        const screenshotsChannel = await guild.channels.fetch(SCREENSHOTS_CHANNEL_ID);
-        
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ error: 'No files uploaded' });
-        }
-
-        const uploadedUrls = [];
-
-        for (const file of req.files) {
-            const attachment = new AttachmentBuilder(file.buffer, { 
-                name: `screenshot_${gameId || 'general'}_${Date.now()}_${file.originalname}` 
-            });
-            
-            const message = await screenshotsChannel.send({
-                content: `📸 Screenshot | Gra: ${gameId || 'unknown'} | ${file.mimetype}`,
-                files: [attachment]
-            });
-
-            const url = message.attachments.first().url;
-            const screenshotId = crypto.randomUUID();
-            
-            screenshotsCache.set(screenshotId, {
-                id: screenshotId,
-                url: url,
-                gameId: gameId || null,
-                filename: file.originalname,
-                uploadedAt: new Date().toISOString()
-            });
-
-            uploadedUrls.push({ url, screenshotId });
-        }
-
-        await saveScreenshotsIndex(guildId);
-
-        res.json({ 
-            success: true, 
-            urls: uploadedUrls,
-            count: uploadedUrls.length,
-            message: `${uploadedUrls.length} screenshots uploaded successfully`
-        });
-
-    } catch (error) {
-        console.error('❌ Screenshots upload error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Pobierz wszystkie screenshoty dla gry
-app.get('/api/screenshots/:gameId', async (req, res) => {
-    try {
-        const gameId = req.params.gameId;
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        
-        await loadScreenshotsIndex(guildId);
-        
-        const gameScreenshots = Array.from(screenshotsCache.values())
-            .filter(s => s.gameId === gameId)
-            .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
-
-        res.json({
-            success: true,
-            gameId: gameId,
-            screenshots: gameScreenshots,
-            total: gameScreenshots.length
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// === KOMENTARZE I OCENY ===
-
-// Pobierz komentarze dla gry
-app.get('/api/games/:gameId/comments', async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const gameId = req.params.gameId;
-        
-        const comments = await loadGameComments(gameId, guildId);
-        
-        res.json({
-            success: true,
-            gameId: gameId,
-            comments: comments,
-            total: comments.length
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Dodaj komentarz
-app.post('/api/games/:gameId/comments', async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const gameId = req.params.gameId;
-        const { username, content, rating } = req.body;
-        
-        if (!username || !content) {
-            return res.status(400).json({ error: 'Username and content required' });
-        }
-
-        // Weryfikacja użytkownika
-        const users = await loadGlobalFile('users.json', {}, guildId);
-        const user = users[username];
-        const authHeader = req.headers.authorization;
-        if (!user || !authHeader || !authHeader.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const comment = {
-            id: crypto.randomUUID(),
-            username: username,
-            content: content.trim(),
-            rating: rating || null,
-            createdAt: new Date().toISOString(),
-            likes: 0,
-            dislikes: 0
-        };
-
-        let comments = await loadGameComments(gameId, guildId);
-        comments.unshift(comment);
-        
-        await saveGameComments(gameId, comments, guildId);
-
-        // Powiadomienie przez WebSocket
-        broadcastToGuild(guildId, 'new_comment', {
-            gameId: gameId,
-            comment: comment
-        });
-
-        // Powiadomienie Discord
-        const games = gamesCache.get(guildId) || [];
-        const game = games.find(g => g.id === gameId);
-        if (game) {
-            const embed = new EmbedBuilder()
-                .setTitle('💬 Nowy komentarz')
-                .setDescription(`**${username}** skomentował **${game.name}**`)
-                .addFields({ name: 'Komentarz', value: content.substring(0, 100) + (content.length > 100 ? '...' : '') })
-                .setColor(0x00d4ff)
-                .setTimestamp();
-            
-            const config = getGuildConfig(guildId);
-            const guild = await getGuild(guildId);
-            const notifChannel = await guild.channels.fetch(config.notificationChannelId);
-            await notifChannel.send({ embeds: [embed] });
-        }
-
-        res.json({
-            success: true,
-            comment: comment,
-            message: 'Comment added successfully'
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Usuń komentarz
-app.delete('/api/games/:gameId/comments/:commentId', async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const { gameId, commentId } = req.params;
-        const { username } = req.body;
-        
-        const users = await loadGlobalFile('users.json', {}, guildId);
-        const user = users[username];
-        const authHeader = req.headers.authorization;
-        if (!user || !authHeader || !authHeader.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        let comments = await loadGameComments(gameId, guildId);
-        const comment = comments.find(c => c.id === commentId);
-        
-        if (!comment) {
-            return res.status(404).json({ error: 'Comment not found' });
-        }
-        
-        if (comment.username !== username) {
-            return res.status(403).json({ error: 'Can only delete your own comments' });
-        }
-
-        comments = comments.filter(c => c.id !== commentId);
-        await saveGameComments(gameId, comments, guildId);
-
-        res.json({
-            success: true,
-            message: 'Comment deleted successfully'
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Ocena gry
-app.post('/api/games/:gameId/rate', async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const gameId = req.params.gameId;
-        const { username, rating } = req.body;
-        
-        if (!rating || rating < 1 || rating > 5) {
-            return res.status(400).json({ error: 'Rating must be 1-5' });
-        }
-
-        const users = await loadGlobalFile('users.json', {}, guildId);
-        const user = users[username];
-        const authHeader = req.headers.authorization;
-        if (!user || !authHeader || !authHeader.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const ratings = await loadGameRatings(gameId, guildId);
-        ratings[username] = {
-            rating: rating,
-            ratedAt: new Date().toISOString()
-        };
-        
-        await saveGameRatings(gameId, ratings, guildId);
-
-        const allRatings = Object.values(ratings).map(r => r.rating);
-        const average = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
-
-        // Powiadomienie WebSocket o nowej ocenie
-        broadcastToGuild(guildId, 'new_rating', {
-            gameId: gameId,
-            username: username,
-            rating: rating,
-            averageRating: Math.round(average * 10) / 10,
-            totalRatings: allRatings.length
-        });
-
-        res.json({
-            success: true,
-            yourRating: rating,
-            averageRating: Math.round(average * 10) / 10,
-            totalRatings: allRatings.length,
-            message: 'Rating saved'
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Pobierz oceny gry
-app.get('/api/games/:gameId/ratings', async (req, res) => {
-    try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        const gameId = req.params.gameId;
-        
-        const ratings = await loadGameRatings(gameId, guildId);
-        const allRatings = Object.values(ratings).map(r => r.rating);
-        
-        const average = allRatings.length > 0 
-            ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length 
-            : 0;
-
-        const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-        allRatings.forEach(r => distribution[r] = (distribution[r] || 0) + 1);
-
-        res.json({
-            success: true,
-            gameId: gameId,
-            averageRating: Math.round(average * 10) / 10,
-            totalRatings: allRatings.length,
-            distribution: distribution,
-            yourRating: req.query.username ? ratings[req.query.username]?.rating : null
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// === FUNKCJE POMOCNICZE ===
-
-async function saveScreenshotsIndex(guildId) {
-    try {
-        const screenshotsData = Array.from(screenshotsCache.values());
-        await saveGlobalFile('screenshots.json', screenshotsData, '📸 Screenshots Index', guildId);
-    } catch (error) {
-        console.error('❌ Błąd zapisu screenshots:', error);
-    }
-}
-
-async function loadScreenshotsIndex(guildId) {
-    try {
-        const data = await loadGlobalFile('screenshots.json', [], guildId);
-        screenshotsCache.clear();
-        data.forEach(s => screenshotsCache.set(s.id, s));
-        return data;
-    } catch (error) {
-        return [];
-    }
-}
-
-async function loadGameComments(gameId, guildId) {
-    try {
-        const allComments = await loadGlobalFile('comments.json', {}, guildId);
-        return allComments[gameId] || [];
-    } catch {
-        return [];
-    }
-}
-
-async function saveGameComments(gameId, comments, guildId) {
-    const allComments = await loadGlobalFile('comments.json', {}, guildId);
-    allComments[gameId] = comments;
-    await saveGlobalFile('comments.json', allComments, '💬 Comments', guildId);
-}
-
-async function loadGameRatings(gameId, guildId) {
-    try {
-        const allRatings = await loadGlobalFile('ratings.json', {}, guildId);
-        return allRatings[gameId] || {};
-    } catch {
-        return {};
-    }
-}
-
-async function saveGameRatings(gameId, ratings, guildId) {
-    const allRatings = await loadGlobalFile('ratings.json', {}, guildId);
-    allRatings[gameId] = ratings;
-    await saveGlobalFile('ratings.json', allRatings, '⭐ Ratings', guildId);
-}
-
-async function checkUserPendingInvites(username, guildId = DEFAULT_GUILD_ID) {
-    try {
-        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] }, guildId);
-        const pending = data.pendingInvites || data.pending || [];
-        return pending.length > 0;
-    } catch {
-        return false;
-    }
-}
-
-async function getPendingInvitesCount(username, guildId = DEFAULT_GUILD_ID) {
-    try {
-        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] }, guildId);
-        const pending = data.pendingInvites || data.pending || [];
-        return pending.length;
-    } catch {
-        return 0;
-    }
-}
-
-async function updatePendingInvitesCache(username, guildId = DEFAULT_GUILD_ID) {
-    try {
-        const data = await loadUserFile(username, 'friends.json', { friends: [], pending: [] }, guildId);
-        const pending = data.pendingInvites || data.pending || [];
-        const cacheKey = `${guildId}:${username}`;
-        
-        if (pending.length > 0) {
-            pendingInvitesCache.set(cacheKey, pending.length);
-        } else {
-            pendingInvitesCache.delete(cacheKey);
-        }
-    } catch (error) {
-        console.error(`Błąd cache:`, error);
-    }
-}
-
-// === INICJALIZACJA DISCORDA ===
-async function initDiscord() {
-    try {
-        console.log('🔌 Łączenie z Discordem...');
-        
-        discordClient.on('error', (error) => {
-            console.error('❌ Discord Error:', error.message);
-        });
-
-        discordClient.on('disconnect', (event) => {
-            console.log('⚠️ Discord disconnect:', event.code);
-            discordReady = false;
-        });
-
-        discordClient.on('reconnecting', () => {
-            console.log('🔄 Reconnecting...');
-        });
-
-        discordClient.on('resume', () => {
-            console.log('✅ Resumed');
-            discordReady = true;
-        });
-
-        discordClient.once('ready', async () => {
-            console.log(`🤖 Bot: ${discordClient.user.tag}`);
-            
-            try {
-                for (const guildId of ALLOWED_GUILDS) {
-                    console.log(`📁 Inicjalizacja guild: ${guildId}`);
-                    await initGuild(guildId);
-                }
-                
-                discordReady = true;
-                console.log('✅ Discord ready! Wszystkie guildy zainicjalizowane.');
-                
-                setInterval(() => {
-                    const ping = discordClient.ws.ping;
-                    console.log(`💓 Ping: ${ping}ms | Ready: ${discordReady} | WS Clients: ${io.engine.clientsCount}`);
-                }, 30000);
-                
-                setInterval(periodicPendingCheck, 30000);
-                
-                setInterval(() => {
-                    for (const guildId of ALLOWED_GUILDS) {
-                        syncGamesFromDiscord(guildId);
-                    }
-                }, 300000);
-                
-            } catch (error) {
-                console.error('❌ Init error:', error);
-            }
-        });
-        
-        await discordClient.login(DISCORD_TOKEN);
-        
-    } catch (error) {
-        console.error('❌ Discord login failed:', error);
-        setTimeout(initDiscord, 10000);
-    }
-}
-
-async function initGuild(guildId) {
-    try {
-        const guild = await getGuild(guildId);
-        if (!guild) {
-            console.error(`❌ Guild ${guildId} nie dostępny`);
-            return;
-        }
-
-        const config = getGuildConfig(guildId);
-        
-        if (!userChannelsCache.has(guildId)) {
-            userChannelsCache.set(guildId, new Map());
-        }
-        
-        const storageCategory = await guild.channels.fetch(config.storageCategoryId);
-        const notificationChannel = await guild.channels.fetch(config.notificationChannelId);
-        
-        console.log(`✅ Guild ${guild.name}: storage=${storageCategory?.name}, notif=${notificationChannel?.name}`);
-        
-        await initGamesChannel(guildId);
-        await loadExistingUserChannels(guildId);
-        await syncGamesFromDiscord(guildId);
-        await loadScreenshotsIndex(guildId);
-        
-    } catch (error) {
-        console.error(`❌ Błąd init guild ${guildId}:`, error.message);
-    }
-}
-
-async function periodicPendingCheck() {
-    if (!discordReady) return;
-    for (const [cacheKey] of pendingInvitesCache) {
-        const [guildId, username] = cacheKey.split(':');
-        await updatePendingInvitesCache(username, guildId);
-    }
-}
-
-async function initGamesChannel(guildId) {
-    try {
-        const guild = await getGuild(guildId);
-        if (!guild) return;
-        
-        const config = getGuildConfig(guildId);
-        let gamesChannel = null;
-
-        if (config.gamesChannelId) {
-            try {
-                gamesChannel = await guild.channels.fetch(config.gamesChannelId);
-            } catch (e) {
-                console.log(`⚠️ Tworzenie nowego kanału gier dla ${guildId}...`);
-            }
-        }
-
-        if (!gamesChannel) {
-            const existing = guild.channels.cache.find(c => 
-                c.name === 'games-json' && c.parentId === config.storageCategoryId
-            );
-
-            if (existing) {
-                gamesChannel = existing;
-                config.gamesChannelId = existing.id;
-            } else {
-                const storageCategory = await guild.channels.fetch(config.storageCategoryId);
-                gamesChannel = await guild.channels.create({
-                    name: 'games-json',
-                    type: ChannelType.GuildText,
-                    parent: storageCategory.id,
-                    topic: '🎮 games.json',
-                    permissionOverwrites: [
-                        { 
-                            id: guild.id, 
-                            deny: [PermissionFlagsBits.SendMessages],
-                            allow: [PermissionFlagsBits.ViewChannel]
-                        },
-                        { 
-                            id: discordClient.user.id, 
-                            allow: [
-                                PermissionFlagsBits.ViewChannel, 
-                                PermissionFlagsBits.SendMessages, 
-                                PermissionFlagsBits.AttachFiles
-                            ] 
-                        }
-                    ]
-                });
-                config.gamesChannelId = gamesChannel.id;
-                console.log(`✅ Utworzono games-json w ${guild.name}`);
-            }
-        }
-    } catch (error) {
-        console.error(`❌ Błąd games channel ${guildId}:`, error.message);
-    }
-}
-
-async function uploadGamesJsonToDiscord(guildId) {
-    if (!discordReady) return false;
-    
-    try {
-        const guild = await getGuild(guildId);
-        if (!guild) return false;
-        
-        const config = getGuildConfig(guildId);
-        const gamesChannel = await guild.channels.fetch(config.gamesChannelId);
-        if (!gamesChannel) return false;
-
-        const games = gamesCache.get(guildId) || [];
-        const gamesData = {
-            guildId: guildId,
-            guildName: guild.name,
-            updatedAt: new Date().toISOString(),
-            totalGames: games.length,
-            games: games
-        };
-
-        const jsonContent = JSON.stringify(gamesData, null, 2);
-        const buffer = Buffer.from(jsonContent, 'utf-8');
-        const attachment = new AttachmentBuilder(buffer, { name: 'games.json' });
-
-        const messages = await gamesChannel.messages.fetch({ limit: 10 });
-        const botMessages = messages.filter(m => 
-            m.author.id === discordClient.user.id && 
-            m.attachments.some(a => a.name === 'games.json')
-        );
-
-        const toDelete = botMessages.sort((a, b) => b.createdTimestamp - a.createdTimestamp).slice(2);
-        for (const msg of toDelete.values()) {
-            try { await msg.delete(); await new Promise(r => setTimeout(r, 500)); } catch {}
-        }
-
-        await gamesChannel.send({
-            content: `🎮 Games.json | ${games.length} gier | <t:${Math.floor(Date.now()/1000)}:F>`,
-            files: [attachment]
-        });
-
-        console.log(`📤 Wysłano games.json dla ${guild.name} (${games.length} gier)`);
-        return true;
-    } catch (error) {
-        console.error(`❌ Błąd upload ${guildId}:`, error.message);
-        return false;
-    }
-}
-
-// === FUNKCJE POMOCNICZE ===
-function hashPassword(password) {
-    return crypto.createHash('sha256').update(password).digest('hex');
-}
-
-function generateToken() {
-    return crypto.randomBytes(32).toString('hex');
-}
-
-async function sendDiscordNotification(embed, guildId = DEFAULT_GUILD_ID) {
-    if (!discordReady) return;
-    try {
-        const guild = await getGuild(guildId);
-        if (!guild) return;
-        
-        const config = getGuildConfig(guildId);
-        const notificationChannel = await guild.channels.fetch(config.notificationChannelId);
-        if (!notificationChannel) return;
-        
-        await notificationChannel.send({ embeds: [embed] });
-    } catch (error) {
-        console.error('❌ Notification error:', error);
-    }
-}
-
-async function loadExistingUserChannels(guildId) {
-    try {
-        const guild = await getGuild(guildId);
-        if (!guild) return;
-        
-        const config = getGuildConfig(guildId);
-        const channels = await guild.channels.fetch();
-        const userChannels = channels.filter(c => 
-            c.parentId === config.storageCategoryId && c.name.startsWith('user-')
-        );
-        
-        const guildCache = userChannelsCache.get(guildId) || new Map();
-        
-        for (const [id, channel] of userChannels) {
-            const username = channel.name.replace('user-', '').replace(/-/g, '_');
-            guildCache.set(username, id);
-        }
-        
-        userChannelsCache.set(guildId, guildCache);
-        console.log(`📁 ${guild.name}: ${guildCache.size} kanałów użytkowników`);
-    } catch (error) {
-        console.error(`❌ Błąd ładowania kanałów ${guildId}:`, error.message);
-    }
-}
-
-async function getOrCreateUserChannel(username, guildId = DEFAULT_GUILD_ID) {
-    if (!discordReady) throw new Error('Discord not ready');
-
-    const guildCache = userChannelsCache.get(guildId) || new Map();
-    
-    if (guildCache.has(username)) {
+['admin', 'game', 'login', 'friends', 'library'].forEach(page => {
+    app.get(`/${page}.html`, async (req, res) => {
         try {
-            const guild = await getGuild(guildId);
-            const ch = await guild.channels.fetch(guildCache.get(username));
-            if (ch) return ch;
-        } catch {
-            guildCache.delete(username);
+            const filePath = path.join(__dirname, `${page}.html`);
+            const html = await fs.readFile(filePath, 'utf-8');
+            res.setHeader('Content-Type', 'text/html');
+            res.send(html);
+        } catch (error) {
+            res.status(500).send(`Błąd: ${error.message}`);
         }
-    }
-
-    const guild = await getGuild(guildId);
-    const config = getGuildConfig(guildId);
-    const storageCategory = await guild.channels.fetch(config.storageCategoryId);
-    
-    const safeName = username.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const channelName = `user-${safeName}`;
-    
-    const existing = guild.channels.cache.find(c => 
-        c.name === channelName && c.parentId === config.storageCategoryId
-    );
-    
-    if (existing) {
-        guildCache.set(username, existing.id);
-        userChannelsCache.set(guildId, guildCache);
-        return existing;
-    }
-
-    const newChannel = await guild.channels.create({
-        name: channelName,
-        type: ChannelType.GuildText,
-        parent: storageCategory.id,
-        topic: `📁 ${username}`,
-        permissionOverwrites: [
-            { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-            { id: discordClient.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] }
-        ]
     });
-    
-    guildCache.set(username, newChannel.id);
-    userChannelsCache.set(guildId, guildCache);
-    return newChannel;
-}
+});
 
-async function saveUserFile(username, filename, data, description = '', guildId = DEFAULT_GUILD_ID) {
-    const channel = await getOrCreateUserChannel(username, guildId);
-    const buffer = Buffer.from(JSON.stringify(data, null, 2));
-    const attachment = new AttachmentBuilder(buffer, { name: filename });
-    
-    const messages = await channel.messages.fetch({ limit: 50 });
-    const old = messages.filter(m => m.attachments.some(a => a.name === filename));
-    
-    for (const msg of old.values()) {
-        try { await msg.delete(); } catch {}
-    }
-    
-    return await channel.send({
-        content: description || `📄 ${filename}`,
-        files: [attachment]
-    });
-}
-
-async function loadUserFile(username, filename, defaultData = {}, guildId = DEFAULT_GUILD_ID) {
-    try {
-        const channel = await getOrCreateUserChannel(username, guildId);
-        const messages = await channel.messages.fetch({ limit: 50 });
-        const msg = messages.find(m => m.attachments.some(a => a.name === filename));
-        
-        if (!msg) return defaultData;
-        
-        const attachment = msg.attachments.find(a => a.name === filename);
-        const res = await fetch(attachment.url);
-        return await res.json();
-    } catch {
-        return defaultData;
-    }
-}
-
-async function getGlobalChannel(guildId = DEFAULT_GUILD_ID) {
-    const guild = await getGuild(guildId);
-    const config = getGuildConfig(guildId);
-    const storageCategory = await guild.channels.fetch(config.storageCategoryId);
-    
-    let ch = storageCategory.children.cache.find(c => c.name === 'global-data');
-    if (!ch) {
-        ch = await guild.channels.create({
-            name: 'global-data',
-            type: ChannelType.GuildText,
-            parent: storageCategory.id
-        });
-    }
-    return ch;
-}
-
-async function saveGlobalFile(filename, data, description = '', guildId = DEFAULT_GUILD_ID) {
-    const channel = await getGlobalChannel(guildId);
-    const buffer = Buffer.from(JSON.stringify(data, null, 2));
-    const attachment = new AttachmentBuilder(buffer, { name: filename });
-    
-    const messages = await channel.messages.fetch({ limit: 50 });
-    const old = messages.filter(m => m.attachments.some(a => a.name === filename));
-    
-    for (const msg of old.values()) {
-        try { await msg.delete(); } catch {}
-    }
-    
-    return await channel.send({
-        content: description || `🌍 ${filename}`,
-        files: [attachment]
-    });
-}
-
-async function loadGlobalFile(filename, defaultData = {}, guildId = DEFAULT_GUILD_ID) {
-    try {
-        const channel = await getGlobalChannel(guildId);
-        const messages = await channel.messages.fetch({ limit: 50 });
-        const msg = messages.find(m => m.attachments.some(a => a.name === filename));
-        
-        if (!msg) return defaultData;
-        
-        const attachment = msg.attachments.find(a => a.name === filename);
-        const res = await fetch(attachment.url);
-        return await res.json();
-    } catch {
-        return defaultData;
-    }
-}
-
-async function getChatChannelName(user1, user2) {
-    const sorted = [user1, user2].sort();
-    return `chat-${sorted[0]}-and-${sorted[1]}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-}
-
-async function loadChatFile(user1, user2, guildId = DEFAULT_GUILD_ID) {
-    try {
-        const guild = await getGuild(guildId);
-        const config = getGuildConfig(guildId);
-        const channelName = await getChatChannelName(user1, user2);
-        const channel = guild.channels.cache.find(c => 
-            c.name === channelName && c.parentId === config.storageCategoryId
-        );
-        
-        if (!channel) return null;
-        
-        const messages = await channel.messages.fetch({ limit: 1 });
-        const msg = messages.first();
-        
-        if (!msg || msg.attachments.size === 0) return null;
-        
-        const attachment = msg.attachments.first();
-        const res = await fetch(attachment.url);
-        return await res.json();
-    } catch {
-        return null;
-    }
-}
-
-async function saveChatFile(user1, user2, data, guildId = DEFAULT_GUILD_ID) {
-    const guild = await getGuild(guildId);
-    const config = getGuildConfig(guildId);
-    const storageCategory = await guild.channels.fetch(config.storageCategoryId);
-    const channelName = await getChatChannelName(user1, user2);
-    
-    let channel = guild.channels.cache.find(c => 
-        c.name === channelName && c.parentId === config.storageCategoryId
-    );
-    
-    if (!channel) {
-        channel = await guild.channels.create({
-            name: channelName,
-            type: ChannelType.GuildText,
-            parent: storageCategory.id,
-            permissionOverwrites: [
-                { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                { id: discordClient.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] }
-            ]
-        });
-    }
-    
-    const buffer = Buffer.from(JSON.stringify(data, null, 2));
-    const attachment = new AttachmentBuilder(buffer, { name: 'chat.json' });
-    
-    const messages = await channel.messages.fetch({ limit: 10 });
-    for (const msg of messages.values()) {
-        try { await msg.delete(); } catch {}
-    }
-    
-    return await channel.send({
-        content: `💬 ${user1} ↔ ${user2}`,
-        files: [attachment]
-    });
-}
-
-async function syncGamesFromDiscord(guildId = DEFAULT_GUILD_ID) {
-    if (!discordReady) return;
-    try {
-        const loaded = await loadGlobalFile('games.json', [], guildId);
-        
-        let games = [];
-        if (Array.isArray(loaded)) {
-            games = loaded;
-        } else if (loaded && loaded.games && Array.isArray(loaded.games)) {
-            games = loaded.games;
-        } else if (loaded && typeof loaded === 'object') {
-            games = Object.values(loaded);
-        }
-        
-        gamesCache.set(guildId, games);
-        console.log(`🎮 ${guildId}: Załadowano ${games.length} gier`);
-    } catch (error) {
-        console.error(`❌ Błąd sync ${guildId}:`, error.message);
-        gamesCache.set(guildId, []);
-    }
-}
-
-async function saveGame(gameId, gameData, guildId = DEFAULT_GUILD_ID) {
-    let games = gamesCache.get(guildId) || [];
-    
-    const existingIndex = games.findIndex(g => g.id === gameId);
-    const gameWithId = { 
-        ...gameData, 
-        id: gameId, 
-        updatedAt: new Date().toISOString() 
-    };
-    
-    if (existingIndex >= 0) {
-        games[existingIndex] = gameWithId;
-    } else {
-        games.push(gameWithId);
-    }
-    
-    gamesCache.set(guildId, games);
-    await saveGlobalFile('games.json', games, '🎮 Games', guildId);
-    await uploadGamesJsonToDiscord(guildId);
-    
-    return gameWithId;
-}
-
-async function deleteGame(gameId, guildId = DEFAULT_GUILD_ID) {
-    let games = gamesCache.get(guildId) || [];
-    const initialLength = games.length;
-    
-    games = games.filter(g => g.id !== gameId);
-    
-    if (games.length < initialLength) {
-        gamesCache.set(guildId, games);
-        await saveGlobalFile('games.json', games, '🎮 Games', guildId);
-        await uploadGamesJsonToDiscord(guildId);
-        return true;
-    }
-    return false;
-}
-
-// === ENDPOINTY GIER ===
+// === GRY ===
 
 app.get('/games', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
-        await validateGuildAccess(guildId);
-        
-        if (discordReady) {
-            const cached = gamesCache.get(guildId);
-            if (!cached || cached.length === 0) {
-                await syncGamesFromDiscord(guildId);
-            }
-        }
-        
-        const games = gamesCache.get(guildId) || [];
+        const games = await loadGlobalFile('games.json', []);
+        gamesCache.set(DEFAULT_GUILD_ID, games);
         res.json(games);
     } catch (error) {
-        res.status(403).json({ error: error.message });
+        res.status(500).json({ error: error.message });
     }
 });
 
 app.get('/games/:id', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
-        await validateGuildAccess(guildId);
-        const games = gamesCache.get(guildId) || [];
+        const games = await loadGlobalFile('games.json', []);
         const game = games.find(g => g.id === req.params.id);
-        
         if (!game) return res.status(404).json({ error: 'Game not found' });
         res.json(game);
     } catch (error) {
-        res.status(403).json({ error: error.message });
+        res.status(500).json({ error: error.message });
     }
 });
 
 app.post('/api/games', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        await validateGuildAccess(guildId);
-        
-        const { 
-            name, description, developer, price, icon, iconUrl, color, 
-            pegi, download_url, size, requirements, screenshots, genre, 
-            releaseDate, rating, publisher, version, language 
-        } = req.body;
+        const { name, description, developer, price, icon, iconUrl, color, 
+                pegi, download_url, size, requirements, screenshots, genre, 
+                releaseDate, publisher, version, language } = req.body;
         
         if (!name) return res.status(400).json({ error: 'Name required' });
         
         const gameId = crypto.randomUUID();
         const gameData = {
+            id: gameId,
             name, 
             description: description || '', 
             developer: developer || 'Unknown',
@@ -1759,19 +795,44 @@ app.post('/api/games', async (req, res) => {
             screenshots: screenshots || [],
             genre: genre || 'Nieznany',
             releaseDate: releaseDate || new Date().toISOString().split('T')[0],
-            rating: rating || 'Brak oceny',
             publisher: publisher || developer || 'Unknown',
             version: version || '1.0',
             language: language || 'Polski/Angielski',
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         };
         
-        const saved = await saveGame(gameId, gameData, guildId);
+        const games = await loadGlobalFile('games.json', []);
+        games.push(gameData);
         
-        // WebSocket powiadomienie
-        await notifyNewGame(saved, guildId);
+        await saveGlobalFile('games.json', games);
+        gamesCache.set(DEFAULT_GUILD_ID, games);
         
-        res.json({ success: true, game: saved });
+        // Powiadomienie Discord (nie blokujące)
+        try {
+            const { EmbedBuilder } = require('discord.js');
+            const embed = new EmbedBuilder()
+                .setTitle(gameData.price === 0 ? '🆓 Nowa darmowa gra!' : '💰 Nowa gra!')
+                .setDescription(`**${gameData.name}**`)
+                .addFields(
+                    { name: 'Dev', value: gameData.developer, inline: true },
+                    { name: 'Cena', value: gameData.price === 0 ? 'DARMOWE' : `${gameData.price}zł`, inline: true },
+                    { name: 'Gatunek', value: gameData.genre, inline: true }
+                )
+                .setColor(parseInt(gameData.color.replace('#', ''), 16))
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        } catch (err) {
+            console.log('Powiadomienie Discord nie wysłane:', err.message);
+        }
+        
+        broadcastToGuild(DEFAULT_GUILD_ID, 'new_game', {
+            game: gameData,
+            timestamp: new Date().toISOString()
+        });
+        
+        res.json({ success: true, game: gameData });
         
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -1780,15 +841,18 @@ app.post('/api/games', async (req, res) => {
 
 app.put('/api/games/:id', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        await validateGuildAccess(guildId);
-        
-        const games = gamesCache.get(guildId) || [];
+        const games = await loadGlobalFile('games.json', []);
         const existing = games.find(g => g.id === req.params.id);
         
         if (!existing) return res.status(404).json({ error: 'Game not found' });
         
-        const updated = await saveGame(req.params.id, { ...existing, ...req.body }, guildId);
+        const updated = { ...existing, ...req.body, updatedAt: new Date().toISOString() };
+        const index = games.findIndex(g => g.id === req.params.id);
+        games[index] = updated;
+        
+        await saveGlobalFile('games.json', games);
+        gamesCache.set(DEFAULT_GUILD_ID, games);
+        
         res.json({ success: true, game: updated });
         
     } catch (error) {
@@ -1798,88 +862,97 @@ app.put('/api/games/:id', async (req, res) => {
 
 app.delete('/api/games/:id', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        await validateGuildAccess(guildId);
+        let games = await loadGlobalFile('games.json', []);
+        const initialLength = games.length;
         
-        const success = await deleteGame(req.params.id, guildId);
-        res.json({ success, message: success ? 'Deleted' : 'Not found' });
+        games = games.filter(g => g.id !== req.params.id);
+        
+        if (games.length < initialLength) {
+            await saveGlobalFile('games.json', games);
+            gamesCache.set(DEFAULT_GUILD_ID, games);
+            res.json({ success: true, message: 'Deleted' });
+        } else {
+            res.status(404).json({ success: false, message: 'Not found' });
+        }
         
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// === AUTH - BEZ WYMAGANIA DISCORDA ===
+// === AUTH ===
+
+function hashPassword(password) {
+    return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+function generateToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
 
 app.post('/api/auth/register', async (req, res) => {
+    console.log('📝 Próba rejestracji:', req.body);
+    
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        
-        let guildConfig = getGuildConfig(guildId);
-        
         const { username, password, email } = req.body;
-        if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
         
-        let users = {};
-        if (discordReady) {
-            users = await loadGlobalFile('users.json', {}, guildId);
-        } else {
-            users = global.tempUsers || {};
-            global.tempUsers = users;
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password required' });
         }
         
-        if (users[username]) return res.status(409).json({ error: 'User exists' });
+        const users = await loadGlobalFile('users.json', {});
+        
+        if (users[username]) {
+            return res.status(409).json({ error: 'User exists' });
+        }
         
         const token = generateToken();
         users[username] = {
-            id: crypto.randomUUID(), 
-            username, 
+            id: crypto.randomUUID(),
+            username,
             email: email || '',
-            passwordHash: hashPassword(password), 
+            passwordHash: hashPassword(password),
             token,
-            guildId: guildId,
             createdAt: new Date().toISOString()
         };
         
-        if (discordReady) {
-            await saveGlobalFile('users.json', users, '👥 Users', guildId);
-            await getOrCreateUserChannel(username, guildId);
-            await saveUserFile(username, 'library.json', { games: [] }, '📚 Library', guildId);
-            await saveUserFile(username, 'friends.json', { friends: [], pending: [] }, '👥 Friends', guildId);
-            
+        await saveGlobalFile('users.json', users);
+        await ensureUserDir(username);
+        await saveUserFile(username, 'library/library.json', { games: [] });
+        await saveUserFile(username, 'friends/friends.json', { friends: [], pendingInvites: [] });
+        
+        console.log('✅ Użytkownik zarejestrowany:', username);
+        
+        // Powiadomienie Discord (nie blokujące - try/catch wewnątrz)
+        try {
+            const { EmbedBuilder } = require('discord.js');
             const embed = new EmbedBuilder()
                 .setTitle('👤 Nowy użytkownik')
-                .setDescription(`**${username}** dołączył do ${guildId}!`)
-                .setColor(0x00ff88);
+                .setDescription(`**${username}** dołączył do systemu!`)
+                .setColor(0x00ff88)
+                .setTimestamp();
             
-            await sendDiscordNotification(embed, guildId);
-        } else {
-            global.tempUsers = users;
+            await sendDiscordNotification(embed);
+        } catch (notifyErr) {
+            console.log('ℹ️ Powiadomienie Discord nie wysłane:', notifyErr.message);
         }
         
         res.json({ success: true, token, userId: users[username].id });
         
     } catch (error) {
-        console.error('Register error:', error);
+        console.error('❌ Błąd rejestracji:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.post('/api/auth/login', async (req, res) => {
+    console.log('🔑 Próba logowania:', req.body.username);
+    
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        
         const { username, password } = req.body;
-        
-        let users = {};
-        if (discordReady) {
-            users = await loadGlobalFile('users.json', {}, guildId);
-        } else {
-            users = global.tempUsers || {};
-        }
+        const users = await loadGlobalFile('users.json', {});
         
         const user = users[username];
-        
         if (!user || user.passwordHash !== hashPassword(password)) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
@@ -1888,60 +961,49 @@ app.post('/api/auth/login', async (req, res) => {
         user.token = token;
         user.lastLogin = new Date().toISOString();
         
-        if (discordReady) {
-            await saveGlobalFile('users.json', users, '👥 Users', guildId);
-        } else {
-            global.tempUsers = users;
-        }
+        await saveGlobalFile('users.json', users);
         
-        const hasPending = discordReady ? await checkUserPendingInvites(username, guildId) : false;
+        const friendsData = await loadUserFile(username, 'friends/friends.json', { pendingInvites: [] });
         
-        res.json({ 
-            success: true, 
-            token, 
-            user: { 
-                id: user.id, 
-                username: user.username, 
-                email: user.email, 
-                hasPendingInvites: hasPending,
-                guildId: guildId
+        console.log('✅ Zalogowano:', username);
+        
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                hasPendingInvites: (friendsData.pendingInvites || []).length > 0
             }
         });
         
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('❌ Błąd logowania:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.get('/api/auth/verify', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
         const auth = req.headers.authorization;
-        if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
-        
-        const token = auth.substring(7);
-        
-        let users = {};
-        if (discordReady) {
-            users = await loadGlobalFile('users.json', {}, guildId);
-        } else {
-            users = global.tempUsers || {};
+        if (!auth?.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'No token' });
         }
         
-        const user = Object.values(users).find(u => u.token === token);
+        const token = auth.substring(7);
+        const users = await loadGlobalFile('users.json', {});
         
+        const user = Object.values(users).find(u => u.token === token);
         if (!user) return res.status(401).json({ error: 'Invalid token' });
         
-        const hasPending = discordReady ? await checkUserPendingInvites(user.username, guildId) : false;
+        const friendsData = await loadUserFile(user.username, 'friends/friends.json', { pendingInvites: [] });
         
-        res.json({ 
-            valid: true, 
-            userId: user.id, 
-            username: user.username, 
-            hasPendingInvites: hasPending,
-            guildId: guildId
+        res.json({
+            valid: true,
+            userId: user.id,
+            username: user.username,
+            hasPendingInvites: (friendsData.pendingInvites || []).length > 0
         });
         
     } catch (error) {
@@ -1949,46 +1011,27 @@ app.get('/api/auth/verify', async (req, res) => {
     }
 });
 
-// === FRIENDS ===
+// === ZNAJOMI ===
 
 app.get('/api/friends/:username', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
+        const data = await loadUserFile(req.params.username, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
         
-        if (!discordReady) {
-            return res.json({ friends: [], pendingInvites: [] });
-        }
+        const users = await loadGlobalFile('users.json', {});
         
-        await validateGuildAccess(guildId);
-        
-        const data = await loadUserFile(req.params.username, 'friends.json', { friends: [], pending: [] }, guildId);
-        const users = await loadGlobalFile('users.json', {}, guildId);
-        
-        if (data.pending && !data.pendingInvites) {
-            data.pendingInvites = data.pending.map(p => ({
-                from: p.from, 
-                timestamp: p.at || new Date().toISOString()
-            }));
-        }
-        
-        const friends = await Promise.all(
-            (data.friends || []).map(async (name) => ({
-                username: name, 
-                status: connectedUsers.has(userSockets.get(name)?.values().next().value) ? 'online' : 'offline',
-                lastSeen: users[name]?.lastLogin
-            }))
-        );
-        
-        const pendingInvites = (data.pendingInvites || data.pending || []).map(p => ({
-            from: p.from, 
-            timestamp: p.timestamp || p.at || new Date().toISOString()
+        const friends = (data.friends || []).map(name => ({
+            username: name,
+            status: userSockets.has(name) ? 'online' : 'offline',
+            lastSeen: users[name]?.lastLogin
         }));
         
-        if (pendingInvites.length > 0) {
-            pendingInvitesCache.set(`${guildId}:${req.params.username}`, pendingInvites.length);
-        }
-        
-        res.json({ friends, pendingInvites });
+        res.json({
+            friends,
+            pendingInvites: data.pendingInvites || []
+        });
         
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -1997,47 +1040,33 @@ app.get('/api/friends/:username', async (req, res) => {
 
 app.post('/api/friends/add', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        
-        if (!discordReady) {
-            return res.status(503).json({ error: 'Discord not ready' });
-        }
-        
-        await validateGuildAccess(guildId);
-        
         const { fromUser, toUser } = req.body;
-        const users = await loadGlobalFile('users.json', {}, guildId);
+        const users = await loadGlobalFile('users.json', {});
         
-        if (!users[toUser]) return res.status(404).json({ error: 'User not found' });
-        
-        const toData = await loadUserFile(toUser, 'friends.json', { friends: [], pending: [] }, guildId);
-        
-        if (toData.pending && !toData.pendingInvites) {
-            toData.pendingInvites = toData.pending.map(p => ({
-                from: p.from, 
-                timestamp: p.at || new Date().toISOString()
-            }));
-            delete toData.pending;
+        if (!users[toUser]) {
+            return res.status(404).json({ error: 'User not found' });
         }
         
-        if (!toData.pendingInvites) toData.pendingInvites = [];
+        const toData = await loadUserFile(toUser, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
         
-        const alreadyPending = toData.pendingInvites.find(p => p.from === fromUser);
-        const alreadyFriends = (toData.friends || []).includes(fromUser);
+        const alreadyPending = toData.pendingInvites?.find(p => p.from === fromUser);
+        const alreadyFriends = toData.friends?.includes(fromUser);
         
         if (!alreadyPending && !alreadyFriends) {
-            const inviteData = {
-                from: fromUser, 
-                timestamp: new Date().toISOString() 
-            };
-            toData.pendingInvites.push(inviteData);
-            await saveUserFile(toUser, 'friends.json', toData, '👥 Friends', guildId);
-            pendingInvitesCache.set(`${guildId}:${toUser}`, toData.pendingInvites.length);
+            if (!toData.pendingInvites) toData.pendingInvites = [];
+            toData.pendingInvites.push({
+                from: fromUser,
+                timestamp: new Date().toISOString()
+            });
             
-            // WebSocket powiadomienie
+            await saveUserFile(toUser, 'friends/friends.json', toData);
+            
             broadcastToUser(toUser, 'friend_request', {
                 from: fromUser,
-                timestamp: inviteData.timestamp
+                timestamp: new Date().toISOString()
             });
         }
         
@@ -2050,26 +1079,17 @@ app.post('/api/friends/add', async (req, res) => {
 
 app.post('/api/friends/respond', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        
-        if (!discordReady) {
-            return res.status(503).json({ error: 'Discord not ready' });
-        }
-        
-        await validateGuildAccess(guildId);
-        
         const { username, fromUser, accept } = req.body;
         
-        const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] }, guildId);
-        const fromData = await loadUserFile(fromUser, 'friends.json', { friends: [], pending: [] }, guildId);
+        const userData = await loadUserFile(username, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
         
-        if (userData.pending && !userData.pendingInvites) {
-            userData.pendingInvites = userData.pending.map(p => ({
-                from: p.from, 
-                timestamp: p.at || new Date().toISOString()
-            }));
-            delete userData.pending;
-        }
+        const fromData = await loadUserFile(fromUser, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
         
         userData.pendingInvites = (userData.pendingInvites || []).filter(p => p.from !== fromUser);
         
@@ -2081,25 +1101,18 @@ app.post('/api/friends/respond', async (req, res) => {
             if (!fromData.friends.includes(username)) fromData.friends.push(username);
             
             await saveChatFile(username, fromUser, {
-                participants: [username, fromUser], 
+                participants: [username, fromUser],
                 messages: []
-            }, guildId);
+            });
             
-            // WebSocket powiadomienia
             broadcastToUser(fromUser, 'friend_accepted', {
                 by: username,
                 timestamp: new Date().toISOString()
             });
-            
-            broadcastToUser(username, 'friend_accepted', {
-                friend: fromUser,
-                timestamp: new Date().toISOString()
-            });
         }
         
-        await saveUserFile(username, 'friends.json', userData, '👥 Friends', guildId);
-        await saveUserFile(fromUser, 'friends.json', fromData, '👥 Friends', guildId);
-        await updatePendingInvitesCache(username, guildId);
+        await saveUserFile(username, 'friends/friends.json', userData);
+        await saveUserFile(fromUser, 'friends/friends.json', fromData);
         
         res.json({ success: true, accepted: accept });
         
@@ -2110,24 +1123,16 @@ app.post('/api/friends/respond', async (req, res) => {
 
 app.delete('/api/friends/remove', async (req, res) => {
     try {
-        const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-        
-        if (!discordReady) {
-            return res.status(503).json({ error: 'Discord not ready' });
-        }
-        
-        await validateGuildAccess(guildId);
-        
         const { username, friendName } = req.body;
         
-        const userData = await loadUserFile(username, 'friends.json', { friends: [], pending: [] }, guildId);
-        const friendData = await loadUserFile(friendName, 'friends.json', { friends: [], pending: [] }, guildId);
+        const userData = await loadUserFile(username, 'friends/friends.json', { friends: [] });
+        const friendData = await loadUserFile(friendName, 'friends/friends.json', { friends: [] });
         
         userData.friends = (userData.friends || []).filter(f => f !== friendName);
         friendData.friends = (friendData.friends || []).filter(f => f !== username);
         
-        await saveUserFile(username, 'friends.json', userData, '👥 Friends', guildId);
-        await saveUserFile(friendName, 'friends.json', friendData, '👥 Friends', guildId);
+        await saveUserFile(username, 'friends/friends.json', userData);
+        await saveUserFile(friendName, 'friends/friends.json', friendData);
         
         res.json({ success: true });
         
@@ -2136,55 +1141,36 @@ app.delete('/api/friends/remove', async (req, res) => {
     }
 });
 
-// === CHAT ===
+// === CZAT ===
 
 app.get('/api/chat/:user1/:user2', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
-        if (!discordReady) {
-            return res.json({ messages: [], participants: [req.params.user1, req.params.user2] });
-        }
-        
-        await validateGuildAccess(guildId);
-        const data = await loadChatFile(req.params.user1, req.params.user2, guildId);
-        res.json(data || { 
-            messages: [], 
-            participants: [req.params.user1, req.params.user2] 
-        });
+        const data = await loadChatFile(req.params.user1, req.params.user2);
+        res.json(data);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
 app.post('/api/chat/send', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
-        if (!discordReady) {
-            return res.status(503).json({ error: 'Discord not ready' });
-        }
-        
-        await validateGuildAccess(guildId);
         const { fromUser, toUser, content } = req.body;
         
-        let chat = await loadChatFile(fromUser, toUser, guildId);
-        if (!chat) chat = { participants: [fromUser, toUser], messages: [] };
+        let chat = await loadChatFile(fromUser, toUser);
         
         const messageData = {
-            id: crypto.randomUUID(), 
+            id: crypto.randomUUID(),
             sender: fromUser,
-            content: content.trim(), 
-            timestamp: new Date().toISOString(), 
+            content: content.trim(),
+            timestamp: new Date().toISOString(),
             read: false
         };
         
         chat.messages.push(messageData);
         if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
         
-        await saveChatFile(fromUser, toUser, chat, guildId);
+        await saveChatFile(fromUser, toUser, chat);
         
-        // WebSocket powiadomienie
         broadcastToUser(toUser, 'new_message', {
             message: messageData,
             fromUser: fromUser
@@ -2197,22 +1183,15 @@ app.post('/api/chat/send', async (req, res) => {
     }
 });
 
-// === LIBRARY ===
+// === BIBLIOTEKA ===
 
 app.get('/api/users/:username/library', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
-        if (!discordReady) {
-            return res.json([]);
-        }
-        
-        await validateGuildAccess(guildId);
-        const lib = await loadUserFile(req.params.username, 'library.json', { games: [] }, guildId);
-        const games = gamesCache.get(guildId) || [];
+        const lib = await loadUserFile(req.params.username, 'library/library.json', { games: [] });
+        const games = await loadGlobalFile('games.json', []);
         
         const enriched = lib.games.map(g => ({
-            ...g, 
+            ...g,
             gameDetails: games.find(gc => gc.id === g.gameId)
         }));
         
@@ -2223,31 +1202,24 @@ app.get('/api/users/:username/library', async (req, res) => {
 });
 
 app.post('/api/users/:username/library', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
-        if (!discordReady) {
-            return res.status(503).json({ error: 'Discord not ready' });
-        }
-        
-        await validateGuildAccess(guildId);
         const { gameId } = req.body;
-        const games = gamesCache.get(guildId) || [];
+        const games = await loadGlobalFile('games.json', []);
         
         if (!games.find(g => g.id === gameId)) {
             return res.status(404).json({ error: 'Game not found' });
         }
         
-        const lib = await loadUserFile(req.params.username, 'library.json', { games: [] }, guildId);
+        const lib = await loadUserFile(req.params.username, 'library/library.json', { games: [] });
         
         if (!lib.games.find(g => g.gameId === gameId)) {
             lib.games.push({
-                gameId, 
+                gameId,
                 addedAt: new Date().toISOString(),
-                installed: false, 
+                installed: false,
                 playTime: 0
             });
-            await saveUserFile(req.params.username, 'library.json', lib, '📚 Library', guildId);
+            await saveUserFile(req.params.username, 'library/library.json', lib);
         }
         
         res.json({ success: true, library: lib.games });
@@ -2258,56 +1230,455 @@ app.post('/api/users/:username/library', async (req, res) => {
 });
 
 app.delete('/api/users/:username/library/:gameId', async (req, res) => {
-    const guildId = req.query.guildId || DEFAULT_GUILD_ID;
-    
     try {
-        if (!discordReady) {
-            return res.status(503).json({ error: 'Discord not ready' });
-        }
-        
-        await validateGuildAccess(guildId);
-        const { username, gameId } = req.params;
-        const lib = await loadUserFile(username, 'library.json', { games: [] }, guildId);
+        const lib = await loadUserFile(req.params.username, 'library/library.json', { games: [] });
         
         const initialLength = lib.games.length;
-        lib.games = lib.games.filter(g => g.gameId !== gameId);
+        lib.games = lib.games.filter(g => g.gameId !== req.params.gameId);
         
         if (lib.games.length === initialLength) {
             return res.status(404).json({ error: 'Game not in library' });
         }
         
-        await saveUserFile(username, 'library.json', lib, '📚 Library', guildId);
-        res.json({ success: true, message: 'Game removed from library' });
+        await saveUserFile(req.params.username, 'library/library.json', lib);
+        res.json({ success: true });
         
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// === OBSŁUGA BŁĘDÓW I ZAMYKANIA ===
+// === KOMENTARZE I OCENY ===
 
-process.on('SIGTERM', () => {
-    console.log('⚠️ SIGTERM received - ignoring for keep-alive');
+app.get('/api/games/:gameId/comments', async (req, res) => {
+    try {
+        const allComments = await loadGlobalFile('comments.json', {});
+        const comments = allComments[req.params.gameId] || [];
+        
+        res.json({ success: true, comments, total: comments.length });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
+app.post('/api/games/:gameId/comments', async (req, res) => {
+    try {
+        const { username, content, rating } = req.body;
+        
+        const users = await loadGlobalFile('users.json', {});
+        const user = users[username];
+        const authHeader = req.headers.authorization;
+        
+        if (!user || !authHeader?.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        const comment = {
+            id: crypto.randomUUID(),
+            username,
+            content: content.trim(),
+            rating: rating || null,
+            createdAt: new Date().toISOString(),
+            likes: 0,
+            dislikes: 0
+        };
+        
+        const allComments = await loadGlobalFile('comments.json', {});
+        if (!allComments[req.params.gameId]) allComments[req.params.gameId] = [];
+        
+        allComments[req.params.gameId].unshift(comment);
+        await saveGlobalFile('comments.json', allComments);
+        
+        // Powiadomienie Discord (nie blokujące)
+        try {
+            const games = await loadGlobalFile('games.json', []);
+            const game = games.find(g => g.id === req.params.gameId);
+            
+            if (game) {
+                const { EmbedBuilder } = require('discord.js');
+                const embed = new EmbedBuilder()
+                    .setTitle('💬 Nowy komentarz')
+                    .setDescription(`**${username}** skomentował **${game.name}**`)
+                    .addFields({ 
+                        name: 'Komentarz', 
+                        value: content.substring(0, 100) + (content.length > 100 ? '...' : '') 
+                    })
+                    .setColor(0x00d4ff)
+                    .setTimestamp();
+                
+                await sendDiscordNotification(embed);
+            }
+        } catch (err) {
+            console.log('Powiadomienie Discord nie wysłane:', err.message);
+        }
+        
+        broadcastToGuild(DEFAULT_GUILD_ID, 'new_comment', {
+            gameId: req.params.gameId,
+            comment: comment
+        });
+        
+        res.json({ success: true, comment });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/games/:gameId/comments/:commentId', async (req, res) => {
+    try {
+        const { username } = req.body;
+        
+        const users = await loadGlobalFile('users.json', {});
+        const user = users[username];
+        const authHeader = req.headers.authorization;
+        
+        if (!user || !authHeader?.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        const allComments = await loadGlobalFile('comments.json', {});
+        const comments = allComments[req.params.gameId] || [];
+        const comment = comments.find(c => c.id === req.params.commentId);
+        
+        if (!comment) return res.status(404).json({ error: 'Comment not found' });
+        if (comment.username !== username) {
+            return res.status(403).json({ error: 'Can only delete your own comments' });
+        }
+        
+        allComments[req.params.gameId] = comments.filter(c => c.id !== req.params.commentId);
+        await saveGlobalFile('comments.json', allComments);
+        
+        res.json({ success: true });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/games/:gameId/rate', async (req, res) => {
+    try {
+        const { username, rating } = req.body;
+        
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ error: 'Rating must be 1-5' });
+        }
+        
+        const users = await loadGlobalFile('users.json', {});
+        const user = users[username];
+        const authHeader = req.headers.authorization;
+        
+        if (!user || !authHeader?.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        const allRatings = await loadGlobalFile('ratings.json', {});
+        if (!allRatings[req.params.gameId]) allRatings[req.params.gameId] = {};
+        
+        allRatings[req.params.gameId][username] = {
+            rating,
+            ratedAt: new Date().toISOString()
+        };
+        
+        await saveGlobalFile('ratings.json', allRatings);
+        
+        const ratings = Object.values(allRatings[req.params.gameId]).map(r => r.rating);
+        const average = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+        
+        broadcastToGuild(DEFAULT_GUILD_ID, 'new_rating', {
+            gameId: req.params.gameId,
+            username,
+            rating,
+            averageRating: Math.round(average * 10) / 10,
+            totalRatings: ratings.length
+        });
+        
+        res.json({
+            success: true,
+            yourRating: rating,
+            averageRating: Math.round(average * 10) / 10,
+            totalRatings: ratings.length
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/games/:gameId/ratings', async (req, res) => {
+    try {
+        const allRatings = await loadGlobalFile('ratings.json', {});
+        const ratings = allRatings[req.params.gameId] || {};
+        
+        const values = Object.values(ratings).map(r => r.rating);
+        const average = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        
+        const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        values.forEach(r => distribution[r] = (distribution[r] || 0) + 1);
+        
+        res.json({
+            success: true,
+            averageRating: Math.round(average * 10) / 10,
+            totalRatings: values.length,
+            distribution,
+            yourRating: req.query.username ? ratings[req.query.username]?.rating : null
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// === UPLOAD PLIKÓW (TYLKO LOKALNIE) ===
+
+app.post('/api/upload/icon', upload.single('icon'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        const iconId = crypto.randomUUID();
+        const url = `/local-icons/${req.file.filename}`;
+        
+        const icons = await loadGlobalFile('icons.json', []);
+        icons.push({
+            id: iconId,
+            url: url,
+            localPath: req.file.path,
+            filename: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            uploadedAt: new Date().toISOString()
+        });
+        
+        await saveGlobalFile('icons.json', icons);
+        
+        res.json({
+            success: true,
+            url: url,
+            iconId: iconId,
+            message: 'Icon uploaded successfully'
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/upload/screenshot', upload.single('screenshot'), async (req, res) => {
+    try {
+        const { gameId } = req.query;
+        
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        const screenshotId = crypto.randomUUID();
+        const url = `/local-screenshots/${req.file.filename}`;
+        
+        const screenshots = await loadGlobalFile('screenshots.json', []);
+        screenshots.push({
+            id: screenshotId,
+            url: url,
+            localPath: req.file.path,
+            gameId: gameId || null,
+            filename: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: req.headers['x-username'] || 'unknown'
+        });
+        
+        await saveGlobalFile('screenshots.json', screenshots);
+        
+        res.json({
+            success: true,
+            url: url,
+            screenshotId: screenshotId,
+            message: 'Screenshot uploaded successfully'
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/upload/screenshots', upload.array('screenshots', 10), async (req, res) => {
+    try {
+        const { gameId } = req.query;
+        
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ error: 'No files uploaded' });
+        }
+        
+        const screenshots = await loadGlobalFile('screenshots.json', []);
+        const uploadedUrls = [];
+        
+        for (const file of req.files) {
+            const screenshotId = crypto.randomUUID();
+            const url = `/local-screenshots/${file.filename}`;
+            
+            screenshots.push({
+                id: screenshotId,
+                url: url,
+                localPath: file.path,
+                gameId: gameId || null,
+                filename: file.originalname,
+                mimetype: file.mimetype,
+                size: file.size,
+                uploadedAt: new Date().toISOString()
+            });
+            
+            uploadedUrls.push({ url, screenshotId });
+        }
+        
+        await saveGlobalFile('screenshots.json', screenshots);
+        
+        res.json({
+            success: true,
+            urls: uploadedUrls,
+            count: uploadedUrls.length
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Serwowanie lokalnych plików
+app.get('/local-screenshots/:filename', async (req, res) => {
+    try {
+        const filepath = path.join(PATHS.screenshots, req.params.filename);
+        await fs.access(filepath);
+        res.sendFile(filepath);
+    } catch {
+        res.status(404).json({ error: 'Screenshot not found' });
+    }
+});
+
+app.get('/local-icons/:filename', async (req, res) => {
+    try {
+        const filepath = path.join(PATHS.icons, req.params.filename);
+        await fs.access(filepath);
+        res.sendFile(filepath);
+    } catch {
+        res.status(404).json({ error: 'Icon not found' });
+    }
+});
+
+app.get('/api/screenshots/:gameId', async (req, res) => {
+    try {
+        const screenshots = await loadGlobalFile('screenshots.json', []);
+        const gameScreenshots = screenshots
+            .filter(s => s.gameId === req.params.gameId)
+            .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+        
+        res.json({
+            success: true,
+            screenshots: gameScreenshots,
+            total: gameScreenshots.length
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// === START SERWERA ===
+
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Serwer HTTP + WebSocket na porcie ${PORT}`);
+    console.log(`📂 Storage: ${BASE_PATH}`);
+    console.log(`🌐 Adres: http://localhost:${PORT} lub https://twoja-domena.alwaysdata.net`);
+    
+    // Self-ping (natywny http)
+    setInterval(() => {
+        try {
+            const http = require('http');
+            const options = {
+                hostname: 'localhost',
+                port: PORT,
+                path: '/health',
+                method: 'GET',
+                timeout: 5000
+            };
+            
+            const req = http.request(options, (res) => {
+                console.log(`🔄 Self-ping OK | Status: ${res.statusCode}`);
+            });
+            
+            req.on('error', (err) => {
+                console.error('❌ Self-ping failed:', err.message);
+            });
+            
+            req.on('timeout', () => {
+                req.destroy();
+                console.error('❌ Self-ping timeout');
+            });
+            
+            req.end();
+            
+        } catch (error) {
+            console.error('❌ Self-ping error:', error.message);
+        }
+    }, PING_INTERVAL);
+});
+
+// Inicjalizacja
+console.log('📋 Server starting...');
+
+initLocalStorage().then(() => {
+    if (DISCORD_TOKEN) {
+        console.log('🔌 Łączenie z Discordem (opcjonalnie)...');
+        
+        discordClient.once('ready', () => {
+            console.log(`🤖 Bot: ${discordClient.user.tag}`);
+            discordReady = true;
+            console.log('✅ Discord ready (powiadomienia aktywne)');
+            
+            // Sprawdźmy czy mamy dostęp do kanałów
+            discordClient.channels.fetch(NOTIFICATION_CHANNEL_ID)
+                .then(ch => console.log(`📨 Kanał powiadomień OK: ${ch.name}`))
+                .catch(err => console.log(`⚠️ Brak dostępu do kanału powiadomień: ${err.message}`));
+            
+            sendDiscordNotification(
+                new (require('discord.js').EmbedBuilder)()
+                    .setTitle('🟢 Serwer wystartował')
+                    .setDescription(`Port: ${PORT}\nStorage: ${BASE_PATH}`)
+                    .setColor(0x00ff00)
+                    .setTimestamp()
+            ).catch(() => {});
+        });
+        
+        discordClient.on('error', (error) => {
+            console.error('❌ Discord Error:', error.message);
+        });
+        
+        discordClient.login(DISCORD_TOKEN).catch(err => {
+            console.log('⚠️ Discord login failed, działam w trybie offline:', err.message);
+        });
+    } else {
+        console.log('⚠️ Brak DISCORD_TOKEN - działam w trybie offline');
+    }
+});
+
+// Obsługa zamykania
 process.on('SIGINT', () => {
     console.log('🛑 SIGINT received - shutting down gracefully');
     isShuttingDown = true;
     
-    // Zamknij wszystkie połączenia WebSocket
-    io.close(() => {
-        console.log('🔌 WebSocket server closed');
-    });
-    
-    server.close(() => {
-        discordClient.destroy();
+    if (discordReady) {
+        sendDiscordNotification(
+            new (require('discord.js').EmbedBuilder)()
+                .setTitle('🔴 Serwer się zamyka')
+                .setColor(0xff0000)
+                .setTimestamp()
+        ).finally(() => {
+            discordClient.destroy();
+            process.exit(0);
+        });
+    } else {
         process.exit(0);
-    });
-});
-
-process.on('beforeExit', () => {
-    console.log('⚠️ beforeExit - keeping alive');
-    setTimeout(() => {}, 1000);
+    }
 });
 
 process.on('unhandledRejection', (error) => {
@@ -2317,6 +1688,3 @@ process.on('unhandledRejection', (error) => {
 process.on('uncaughtException', (error) => {
     console.error('⚠️ Uncaught Exception:', error.message);
 });
-
-console.log('📋 Server starting...');
-initDiscord();
