@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nebula - Platforma Gier</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -453,6 +454,10 @@
             background: linear-gradient(135deg, #00ff88 0%, #00d4ff 100%);
         }
 
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4444 0%, #ff6b6b 100%);
+        }
+
         /* Comments Section in Modal */
         .comments-section {
             margin-top: 30px;
@@ -487,6 +492,7 @@
             display: flex;
             justify-content: space-between;
             margin-bottom: 8px;
+            align-items: center;
         }
 
         .comment-author {
@@ -497,6 +503,25 @@
         .comment-date {
             font-size: 12px;
             opacity: 0.6;
+        }
+
+        .comment-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .comment-delete-btn {
+            background: rgba(255, 68, 68, 0.2);
+            border: none;
+            color: #ff4444;
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .comment-delete-btn:hover {
+            background: rgba(255, 68, 68, 0.4);
         }
 
         /* Library Page */
@@ -619,6 +644,29 @@
             color: #ff4444;
         }
 
+        .friend-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .friend-remove-btn {
+            background: rgba(255, 68, 68, 0.2);
+            border: none;
+            color: #ff4444;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .friend-remove-btn:hover {
+            background: rgba(255, 68, 68, 0.4);
+        }
+
         .add-friend-section {
             background: rgba(255, 255, 255, 0.05);
             border-radius: 16px;
@@ -737,6 +785,13 @@
             border-radius: 20px;
         }
 
+        .typing-indicator {
+            font-size: 12px;
+            opacity: 0.6;
+            padding: 5px 15px;
+            font-style: italic;
+        }
+
         /* Rating Stars */
         .star-rating {
             display: flex;
@@ -786,6 +841,43 @@
             transform: scale(1.1);
         }
 
+        /* Rating Stats */
+        .rating-stats {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .rating-average {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+
+        .rating-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .rating-bar-fill {
+            flex: 1;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .rating-bar-fill-inner {
+            height: 100%;
+            background: #ffd700;
+            border-radius: 4px;
+        }
+
         /* Notifications */
         .notification {
             position: fixed;
@@ -800,9 +892,54 @@
             font-weight: 600;
         }
 
+        .notification.error {
+            background: rgba(255, 68, 68, 0.9);
+            color: #fff;
+        }
+
         @keyframes slideIn {
             from { transform: translateX(400px); }
             to { transform: translateX(0); }
+        }
+
+        /* Server Status Indicator */
+        .server-status {
+            position: fixed;
+            top: 20px;
+            left: 270px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 99;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.online {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+
+        .status-dot.offline {
+            background: #ff4444;
+        }
+
+        .status-dot.connecting {
+            background: #ffd700;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         /* Responsive */
@@ -823,6 +960,12 @@
 
             .friends-layout {
                 grid-template-columns: 1fr;
+            }
+
+            .server-status {
+                left: 20px;
+                top: auto;
+                bottom: 20px;
             }
         }
 
@@ -864,6 +1007,12 @@
 </head>
 <body>
     <div id="app">
+        <!-- Server Status -->
+        <div class="server-status" id="serverStatus" style="display: none;">
+            <div class="status-dot connecting" id="statusDot"></div>
+            <span id="statusText">Łączenie...</span>
+        </div>
+
         <!-- Auth View -->
         <div id="authView" class="auth-container">
             <div class="auth-box">
@@ -935,7 +1084,7 @@
                         <div class="user-avatar" id="userAvatar">U</div>
                         <div class="user-details">
                             <div class="username" id="sidebarUsername">Użytkownik</div>
-                            <div class="user-status">Online</div>
+                            <div class="user-status" id="userStatusText">Online</div>
                         </div>
                     </div>
                     <button class="logout-btn" id="logoutBtn">Wyloguj się</button>
@@ -1012,6 +1161,7 @@
                 <button class="modal-close" id="closeChatBtn" style="position: static; width: 30px; height: 30px;">&times;</button>
             </div>
             <div class="chat-messages" id="chatMessages"></div>
+            <div class="typing-indicator hidden" id="typingIndicator"></div>
             <div class="chat-input-area">
                 <input type="text" class="chat-input" id="chatInput" placeholder="Napisz wiadomość...">
                 <button class="btn btn-small" id="sendMsgBtn">➤</button>
@@ -1021,7 +1171,8 @@
 
     <script>
         // Configuration
-        const API_URL = '';
+        const API_URL = 'https://api-for-launcher.onrender.com';
+        const DEFAULT_GUILD_ID = '1477574526933012541';
         let currentUser = null;
         let currentToken = null;
         let games = [];
@@ -1029,12 +1180,180 @@
         let friends = [];
         let currentChatFriend = null;
         let currentGameId = null;
+        let socket = null;
+        let dropboxStatus = { connected: false };
+        let typingTimeout = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
+            checkServerStatus();
             checkAuth();
             setupEventListeners();
         });
+
+        async function checkServerStatus() {
+            const statusEl = document.getElementById('serverStatus');
+            const dotEl = document.getElementById('statusDot');
+            const textEl = document.getElementById('statusText');
+            
+            try {
+                const response = await fetch(API_URL + '/health');
+                const data = await response.json();
+                
+                dropboxStatus = data.dropbox;
+                
+                if (data.status === 'OK') {
+                    dotEl.className = 'status-dot online';
+                    textEl.textContent = 'Online' + (data.dropbox.connected ? ' (Dropbox OK)' : ' (Dropbox ?)');
+                    statusEl.style.display = 'flex';
+                    return true;
+                }
+            } catch (e) {
+                dotEl.className = 'status-dot offline';
+                textEl.textContent = 'Offline';
+                statusEl.style.display = 'flex';
+                return false;
+            }
+        }
+
+        function initSocket() {
+            if (!currentToken) return;
+            
+            socket = io(API_URL || undefined, {
+                auth: { token: currentToken },
+                transports: ['websocket', 'polling']
+            });
+            
+            socket.on('connect', () => {
+                console.log('Socket connected');
+                socket.emit('authenticate', { 
+                    token: currentToken,
+                    guildId: DEFAULT_GUILD_ID 
+                });
+            });
+            
+            socket.on('authenticated', (data) => {
+                console.log('Socket authenticated:', data);
+                updateUserStatus('online');
+            });
+            
+            socket.on('auth_error', (data) => {
+                console.error('Socket auth error:', data);
+                showNotification('Błąd autentykacji Socket', true);
+            });
+            
+            socket.on('new_message', (data) => {
+                if (currentChatFriend === data.fromUser) {
+                    loadChat();
+                    // Mark as read
+                    socket.emit('message_read', { fromUser: data.fromUser, messageId: data.message.id });
+                } else {
+                    showNotification('Nowa wiadomość od ' + data.fromUser);
+                }
+            });
+            
+            socket.on('message_sent', (data) => {
+                loadChat();
+            });
+            
+            socket.on('message_error', (data) => {
+                showNotification('Błąd wysyłania wiadomości: ' + data.error, true);
+            });
+            
+            socket.on('friend_request', (data) => {
+                showNotification('Nowe zaproszenie od ' + data.from);
+                loadFriends();
+            });
+            
+            socket.on('friend_accepted', (data) => {
+                showNotification(data.by + ' zaakceptował zaproszenie');
+                loadFriends();
+            });
+            
+            socket.on('friend_status_change', (data) => {
+                updateFriendStatus(data.username, data.status);
+            });
+            
+            socket.on('new_game', (data) => {
+                showNotification('Nowa gra dostępna: ' + data.game.name);
+                loadGames();
+            });
+            
+            socket.on('new_comment', (data) => {
+                if (currentGameId === data.gameId) {
+                    loadComments(currentGameId);
+                }
+            });
+            
+            socket.on('new_rating', (data) => {
+                if (currentGameId === data.gameId) {
+                    loadGameRating(currentGameId);
+                }
+            });
+            
+            socket.on('typing', (data) => {
+                if (currentChatFriend === data.fromUser) {
+                    showTypingIndicator(data.fromUser);
+                }
+            });
+            
+            socket.on('stop_typing', (data) => {
+                if (currentChatFriend === data.fromUser) {
+                    hideTypingIndicator();
+                }
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Socket disconnected:', reason);
+                updateUserStatus('offline');
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Socket connection error:', error);
+            });
+        }
+
+        function updateUserStatus(status) {
+            const statusText = document.getElementById('userStatusText');
+            if (statusText) {
+                statusText.textContent = status === 'online' ? 'Online' : 'Offline';
+                statusText.style.color = status === 'online' ? '#00ff88' : '#ff4444';
+            }
+            
+            if (socket && socket.connected) {
+                socket.emit('status_change', { 
+                    status: status,
+                    activity: currentGameId ? 'Przegląda grę' : 'Online'
+                });
+            }
+        }
+
+        function updateFriendStatus(username, status) {
+            const friendItems = document.querySelectorAll('.friend-item');
+            friendItems.forEach(item => {
+                if (item.getAttribute('data-friend') === username) {
+                    const statusEl = item.querySelector('.friend-status');
+                    if (statusEl) {
+                        statusEl.className = 'friend-status ' + (status === 'online' ? 'status-online' : 'status-offline');
+                        statusEl.textContent = status === 'online' ? '🟢 Online' : '🔴 Offline';
+                    }
+                }
+            });
+        }
+
+        function showTypingIndicator(username) {
+            const indicator = document.getElementById('typingIndicator');
+            indicator.textContent = username + ' pisze...';
+            indicator.classList.remove('hidden');
+            
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(hideTypingIndicator, 5000);
+        }
+
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            indicator.classList.add('hidden');
+        }
 
         function setupEventListeners() {
             // Auth buttons
@@ -1053,7 +1372,7 @@
             });
             
             // Search
-            document.getElementById('searchInput').addEventListener('input', searchGames);
+            document.getElementById('searchInput').addEventListener('input', debounce(searchGames, 300));
             
             // Modal
             document.getElementById('closeModalBtn').addEventListener('click', closeGameModal);
@@ -1067,9 +1386,26 @@
             document.getElementById('chatInput').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') sendMessage();
             });
+            document.getElementById('chatInput').addEventListener('input', function() {
+                if (socket && socket.connected && currentChatFriend) {
+                    socket.emit('typing', { toUser: currentChatFriend });
+                }
+            });
             
             // Friends
             document.getElementById('addFriendBtn').addEventListener('click', sendFriendRequest);
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
         }
 
         // Auth Functions
@@ -1083,10 +1419,13 @@
                         headers: { 'Authorization': 'Bearer ' + token }
                     });
                     
-                    if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.valid) {
                         currentUser = username;
                         currentToken = token;
                         showMainApp();
+                        initSocket();
                     } else {
                         showAuth();
                     }
@@ -1101,11 +1440,13 @@
         function showAuth() {
             document.getElementById('authView').classList.remove('hidden');
             document.getElementById('mainView').classList.add('hidden');
+            document.getElementById('serverStatus').style.display = 'none';
         }
 
         function showMainApp() {
             document.getElementById('authView').classList.add('hidden');
             document.getElementById('mainView').classList.remove('hidden');
+            document.getElementById('serverStatus').style.display = 'flex';
             
             document.getElementById('sidebarUsername').textContent = currentUser;
             document.getElementById('userAvatar').textContent = currentUser[0].toUpperCase();
@@ -1126,11 +1467,11 @@
         }
 
         async function login() {
-            const username = document.getElementById('loginUsername').value;
+            const username = document.getElementById('loginUsername').value.trim();
             const password = document.getElementById('loginPassword').value;
             
             if (!username || !password) {
-                showNotification('Wypełnij wszystkie pola');
+                showNotification('Wypełnij wszystkie pola', true);
                 return;
             }
             
@@ -1138,7 +1479,7 @@
                 const response = await fetch(API_URL + '/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password, guildId: DEFAULT_GUILD_ID })
                 });
                 
                 const data = await response.json();
@@ -1146,24 +1487,30 @@
                 if (data.success) {
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('username', username);
+                    localStorage.setItem('userId', data.user.id);
                     currentUser = username;
                     currentToken = data.token;
                     showMainApp();
+                    initSocket();
+                    
+                    if (data.user.hasPendingInvites) {
+                        showNotification('Masz oczekujące zaproszenia do znajomych!');
+                    }
                 } else {
-                    showNotification('Błędne dane logowania');
+                    showNotification(data.error || 'Błędne dane logowania', true);
                 }
             } catch (error) {
-                showNotification('Błąd logowania');
+                showNotification('Błąd logowania: ' + error.message, true);
             }
         }
 
         async function register() {
-            const username = document.getElementById('regUsername').value;
-            const email = document.getElementById('regEmail').value;
+            const username = document.getElementById('regUsername').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
             const password = document.getElementById('regPassword').value;
             
             if (!username || !password) {
-                showNotification('Wypełnij wymagane pola');
+                showNotification('Wypełnij wymagane pola', true);
                 return;
             }
             
@@ -1171,7 +1518,7 @@
                 const response = await fetch(API_URL + '/api/auth/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, email })
+                    body: JSON.stringify({ username, password, email, guildId: DEFAULT_GUILD_ID })
                 });
                 
                 const data = await response.json();
@@ -1179,21 +1526,28 @@
                 if (data.success) {
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('username', username);
+                    localStorage.setItem('userId', data.userId);
                     currentUser = username;
                     currentToken = data.token;
                     showMainApp();
+                    initSocket();
                     showNotification('Konto utworzone pomyślnie!');
                 } else {
-                    showNotification(data.error || 'Błąd rejestracji');
+                    showNotification(data.error || 'Błąd rejestracji', true);
                 }
             } catch (error) {
-                showNotification('Błąd rejestracji');
+                showNotification('Błąd rejestracji: ' + error.message, true);
             }
         }
 
         function logout() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
             localStorage.removeItem('token');
             localStorage.removeItem('username');
+            localStorage.removeItem('userId');
             currentUser = null;
             currentToken = null;
             showAuth();
@@ -1218,7 +1572,7 @@
         // Store Functions
         async function loadGames() {
             try {
-                const response = await fetch(API_URL + '/games');
+                const response = await fetch(API_URL + '/games?t=' + Date.now());
                 games = await response.json();
                 renderGames(games);
             } catch (error) {
@@ -1236,22 +1590,25 @@
             }
             
             container.innerHTML = gamesToRender.map(function(game) {
+                const rating = game.rating || '0.0';
+                const priceDisplay = game.price === 0 ? 'DARMOWE' : game.price + 'zł';
+                const bgStyle = game.color ? `background: ${game.color}` : 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                
                 return '<div class="game-card" data-game-id="' + game.id + '">' +
-                    '<div class="game-image">' +
-                        (game.iconUrl ? '<img src="' + game.iconUrl + '" alt="' + game.name + '">' : (game.icon || '🎮')) +
+                    '<div class="game-image" style="' + bgStyle + '">' +
+                        (game.iconUrl ? '<img src="' + game.iconUrl + '" alt="' + escapeHtml(game.name) + '">' : (game.icon || '🎮')) +
                     '</div>' +
                     '<div class="game-info">' +
-                        '<div class="game-title">' + game.name + '</div>' +
-                        '<div class="game-dev">' + (game.developer || 'Nieznany') + '</div>' +
+                        '<div class="game-title">' + escapeHtml(game.name) + '</div>' +
+                        '<div class="game-dev">' + escapeHtml(game.developer || 'Nieznany') + '</div>' +
                         '<div class="game-footer">' +
-                            '<div class="game-price">' + (game.price === 0 ? 'DARMOWE' : game.price + 'zł') + '</div>' +
-                            '<div class="game-rating">★ ' + (game.rating || '0.0') + '</div>' +
+                            '<div class="game-price">' + priceDisplay + '</div>' +
+                            '<div class="game-rating">★ ' + rating + '</div>' +
                         '</div>' +
                     '</div>' +
                 '</div>';
             }).join('');
             
-            // Add click listeners
             container.querySelectorAll('.game-card').forEach(function(card) {
                 card.addEventListener('click', function() {
                     openGameModal(this.getAttribute('data-game-id'));
@@ -1263,7 +1620,8 @@
             const query = document.getElementById('searchInput').value.toLowerCase();
             const filtered = games.filter(function(g) {
                 return g.name.toLowerCase().includes(query) || 
-                       (g.developer && g.developer.toLowerCase().includes(query));
+                       (g.developer && g.developer.toLowerCase().includes(query)) ||
+                       (g.genre && g.genre.toLowerCase().includes(query));
             });
             renderGames(filtered);
         }
@@ -1280,12 +1638,17 @@
             const inLibrary = library.some(function(l) { return l.gameId === gameId; });
             
             body.innerHTML = 
-                '<h2 class="modal-title">' + game.name + '</h2>' +
+                '<h2 class="modal-title">' + escapeHtml(game.name) + '</h2>' +
                 '<div class="modal-meta">' +
-                    '<span class="meta-tag">🎯 ' + (game.genre || 'Nieznany') + '</span>' +
-                    '<span class="meta-tag">👨‍💻 ' + (game.developer || 'Nieznany') + '</span>' +
+                    '<span class="meta-tag">🎯 ' + escapeHtml(game.genre || 'Nieznany') + '</span>' +
+                    '<span class="meta-tag">👨‍💻 ' + escapeHtml(game.developer || 'Nieznany') + '</span>' +
                     '<span class="meta-tag">💰 ' + (game.price === 0 ? 'DARMOWE' : game.price + 'zł') + '</span>' +
                     '<span class="meta-tag">🔞 PEGI ' + (game.pegi || '?') + '</span>' +
+                    (game.version ? '<span class="meta-tag">📦 v' + game.version + '</span>' : '') +
+                '</div>' +
+                
+                '<div class="rating-stats" id="ratingStats">' +
+                    '<div class="spinner" style="width: 20px; height: 20px;"></div>' +
                 '</div>' +
                 
                 '<div class="star-rating" id="gameRating">' +
@@ -1294,13 +1657,14 @@
                     }).join('') +
                 '</div>' +
                 
-                '<p class="modal-description">' + (game.description || 'Brak opisu') + '</p>' +
+                '<p class="modal-description">' + escapeHtml(game.description || 'Brak opisu') + '</p>' +
                 
                 '<div class="modal-actions">' +
                     (inLibrary ? 
                         '<button class="btn btn-success" id="inLibraryBtn" disabled>✓ W bibliotece</button>' :
                         '<button class="btn btn-primary" id="addToLibBtn">🛒 Dodaj do biblioteki</button>'
                     ) +
+                    (game.download_url ? '<a href="' + game.download_url + '" target="_blank" class="btn btn-secondary" style="text-decoration: none; display: inline-block; text-align: center;">⬇️ Pobierz</a>' : '') +
                 '</div>' +
                 
                 '<div class="screenshots-grid" id="modalScreenshots"></div>' +
@@ -1314,7 +1678,6 @@
                     '<div id="commentsList"></div>' +
                 '</div>';
             
-            // Add listeners
             if (!inLibrary) {
                 document.getElementById('addToLibBtn').addEventListener('click', function() {
                     addToLibrary(gameId);
@@ -1323,7 +1686,6 @@
             
             document.getElementById('addCommentBtn').addEventListener('click', addComment);
             
-            // Star rating
             document.querySelectorAll('#gameRating .star').forEach(function(star) {
                 star.addEventListener('click', function() {
                     const rating = parseInt(this.getAttribute('data-rating'));
@@ -1336,28 +1698,32 @@
         }
 
         async function loadGameDetails(gameId) {
+            // Load rating stats
+            loadGameRating(gameId);
+            
             // Load screenshots
             try {
-                const response = await fetch(API_URL + '/api/screenshots/' + gameId);
+                const response = await fetch(API_URL + '/api/screenshots/' + gameId + '?t=' + Date.now());
                 const data = await response.json();
                 const container = document.getElementById('modalScreenshots');
                 if (data.screenshots && data.screenshots.length > 0) {
                     container.innerHTML = data.screenshots.map(function(s) {
-                        return '<div class="screenshot-thumb"><img src="' + s.url + '"></div>';
+                        return '<div class="screenshot-thumb"><img src="' + s.url + '" alt="Screenshot"></div>';
                     }).join('');
+                } else {
+                    container.innerHTML = '<div class="empty-state" style="padding: 20px;">Brak screenshotów</div>';
                 }
-            } catch (e) {}
+            } catch (e) {
+                document.getElementById('modalScreenshots').innerHTML = '<div class="empty-state" style="padding: 20px;">Błąd ładowania screenshotów</div>';
+            }
             
             // Load comments
             loadComments(gameId);
-            
-            // Load ratings
-            loadGameRating(gameId);
         }
 
         async function loadComments(gameId) {
             try {
-                const response = await fetch(API_URL + '/api/games/' + gameId + '/comments');
+                const response = await fetch(API_URL + '/api/games/' + gameId + '/comments?t=' + Date.now());
                 const data = await response.json();
                 
                 const container = document.getElementById('commentsList');
@@ -1367,10 +1733,14 @@
                 }
                 
                 container.innerHTML = data.comments.map(function(c) {
-                    return '<div class="comment">' +
+                    const isOwner = c.username === currentUser;
+                    return '<div class="comment" data-comment-id="' + c.id + '">' +
                         '<div class="comment-header">' +
-                            '<span class="comment-author">' + c.username + '</span>' +
-                            '<span class="comment-date">' + new Date(c.createdAt).toLocaleDateString() + '</span>' +
+                            '<span class="comment-author">' + escapeHtml(c.username) + '</span>' +
+                            '<div class="comment-actions">' +
+                                '<span class="comment-date">' + new Date(c.createdAt).toLocaleDateString() + '</span>' +
+                                (isOwner ? '<button class="comment-delete-btn" onclick="deleteComment(\'' + c.id + '\')">🗑️</button>' : '') +
+                            '</div>' +
                         '</div>' +
                         (c.rating ? '<div style="color: #ffd700">' + '★'.repeat(c.rating) + '</div>' : '') +
                         '<div>' + escapeHtml(c.content) + '</div>' +
@@ -1382,14 +1752,14 @@
         }
 
         async function addComment() {
-            const content = document.getElementById('commentText').value;
+            const content = document.getElementById('commentText').value.trim();
             if (!content) {
-                showNotification('Wpisz treść komentarza');
+                showNotification('Wpisz treść komentarza', true);
                 return;
             }
             
             try {
-                await fetch(API_URL + '/api/games/' + currentGameId + '/comments', {
+                const response = await fetch(API_URL + '/api/games/' + currentGameId + '/comments', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1401,31 +1771,90 @@
                     })
                 });
                 
-                document.getElementById('commentText').value = '';
-                loadComments(currentGameId);
-                showNotification('Komentarz dodany!');
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('commentText').value = '';
+                    loadComments(currentGameId);
+                    showNotification('Komentarz dodany!');
+                } else {
+                    showNotification(data.error || 'Błąd dodawania komentarza', true);
+                }
             } catch (e) {
-                showNotification('Błąd dodawania komentarza');
+                showNotification('Błąd dodawania komentarza', true);
+            }
+        }
+
+        async function deleteComment(commentId) {
+            if (!confirm('Usunąć ten komentarz?')) return;
+            
+            try {
+                const response = await fetch(API_URL + '/api/games/' + currentGameId + '/comments/' + commentId, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + currentToken
+                    },
+                    body: JSON.stringify({ username: currentUser })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadComments(currentGameId);
+                    showNotification('Komentarz usunięty');
+                } else {
+                    showNotification(data.error || 'Błąd usuwania', true);
+                }
+            } catch (e) {
+                showNotification('Błąd usuwania komentarza', true);
             }
         }
 
         async function loadGameRating(gameId) {
             try {
-                const response = await fetch(API_URL + '/api/games/' + gameId + '/ratings?username=' + currentUser);
+                const response = await fetch(API_URL + '/api/games/' + gameId + '/ratings?username=' + currentUser + '&t=' + Date.now());
                 const data = await response.json();
                 
+                // Update stats
+                const statsContainer = document.getElementById('ratingStats');
+                if (data.totalRatings > 0) {
+                    let distributionHtml = '';
+                    for (let i = 5; i >= 1; i--) {
+                        const count = data.distribution[i] || 0;
+                        const percent = (count / data.totalRatings) * 100;
+                        distributionHtml += '<div class="rating-bar">' +
+                            '<span>' + i + '★</span>' +
+                            '<div class="rating-bar-fill">' +
+                                '<div class="rating-bar-fill-inner" style="width: ' + percent + '%"></div>' +
+                            '</div>' +
+                            '<span>' + count + '</span>' +
+                        '</div>';
+                    }
+                    
+                    statsContainer.innerHTML = 
+                        '<div class="rating-average">★ ' + data.averageRating + ' (' + data.totalRatings + ' ocen)</div>' +
+                        distributionHtml;
+                } else {
+                    statsContainer.innerHTML = '<div class="empty-state" style="padding: 10px;">Brak ocen</div>';
+                }
+                
+                // Update stars
                 if (data.yourRating) {
                     const stars = document.querySelectorAll('#gameRating .star');
                     stars.forEach(function(s, i) {
                         if (i < data.yourRating) s.classList.add('filled');
+                        else s.classList.remove('filled');
                     });
                 }
-            } catch (e) {}
+            } catch (e) {
+                document.getElementById('ratingStats').innerHTML = '<div class="empty-state" style="padding: 10px;">Błąd ładowania ocen</div>';
+            }
         }
 
         async function rateGame(rating) {
             try {
-                await fetch(API_URL + '/api/games/' + currentGameId + '/rate', {
+                const response = await fetch(API_URL + '/api/games/' + currentGameId + '/rate', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1437,17 +1866,23 @@
                     })
                 });
                 
-                // Update stars
-                const stars = document.querySelectorAll('#gameRating .star');
-                stars.forEach(function(s, i) {
-                    if (i < rating) s.classList.add('filled');
-                    else s.classList.remove('filled');
-                });
+                const data = await response.json();
                 
-                showNotification('Oceniono na ' + rating + ' gwiazdek!');
-                loadGames();
+                if (data.success) {
+                    const stars = document.querySelectorAll('#gameRating .star');
+                    stars.forEach(function(s, i) {
+                        if (i < rating) s.classList.add('filled');
+                        else s.classList.remove('filled');
+                    });
+                    
+                    showNotification('Oceniono na ' + rating + ' gwiazdek!');
+                    loadGameRating(currentGameId);
+                    loadGames(); // Refresh game list to update rating
+                } else {
+                    showNotification(data.error || 'Błąd oceniania', true);
+                }
             } catch (e) {
-                showNotification('Błąd oceniania');
+                showNotification('Błąd oceniania', true);
             }
         }
 
@@ -1459,7 +1894,7 @@
         // Library Functions
         async function loadLibrary() {
             try {
-                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library', {
+                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library?t=' + Date.now(), {
                     headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 library = await response.json();
@@ -1480,25 +1915,43 @@
             
             container.innerHTML = library.map(function(item) {
                 const game = item.gameDetails || {};
+                const playTimeHours = Math.floor((item.playTime || 0) / 60);
+                const playTimeMins = (item.playTime || 0) % 60;
+                
                 return '<div class="library-card">' +
                     '<div class="library-icon">' +
-                        (game.iconUrl ? '<img src="' + game.iconUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px">' : (game.icon || '🎮')) +
+                        (game.iconUrl ? '<img src="' + game.iconUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px" alt="' + escapeHtml(game.name || '') + '">' : (game.icon || '🎮')) +
                     '</div>' +
                     '<div class="library-info">' +
-                        '<div class="library-title">' + (game.name || 'Unknown') + '</div>' +
+                        '<div class="library-title">' + escapeHtml(game.name || 'Unknown') + '</div>' +
                         '<div class="library-meta">' +
                             'Dodano: ' + new Date(item.addedAt).toLocaleDateString() +
                         '</div>' +
+                        '<div class="library-meta">' +
+                            'Czas gry: ' + playTimeHours + 'h ' + playTimeMins + 'm' +
+                        '</div>' +
                         '<div class="library-actions">' +
+                            (game.download_url ? '<button class="btn btn-small btn-success install-btn" data-game-id="' + item.gameId + '">⬇️ Pobierz</button>' : '') +
                             '<button class="btn btn-small btn-secondary remove-game-btn" data-game-id="' + item.gameId + '">🗑️ Usuń</button>' +
                         '</div>' +
                     '</div>' +
                 '</div>';
             }).join('');
             
-            // Add remove listeners
+            container.querySelectorAll('.install-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const gameId = this.getAttribute('data-game-id');
+                    const game = library.find(l => l.gameId === gameId);
+                    if (game && game.gameDetails && game.gameDetails.download_url) {
+                        window.open(game.gameDetails.download_url, '_blank');
+                    }
+                });
+            });
+            
             container.querySelectorAll('.remove-game-btn').forEach(function(btn) {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
                     removeFromLibrary(this.getAttribute('data-game-id'));
                 });
             });
@@ -1506,7 +1959,7 @@
 
         async function addToLibrary(gameId) {
             try {
-                await fetch(API_URL + '/api/users/' + currentUser + '/library', {
+                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1515,11 +1968,17 @@
                     body: JSON.stringify({ gameId: gameId })
                 });
                 
-                showNotification('Dodano do biblioteki!');
-                loadLibrary();
-                closeGameModal();
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Dodano do biblioteki!');
+                    loadLibrary();
+                    closeGameModal();
+                } else {
+                    showNotification(data.error || 'Błąd dodawania', true);
+                }
             } catch (e) {
-                showNotification('Błąd dodawania do biblioteki');
+                showNotification('Błąd dodawania do biblioteki', true);
             }
         }
 
@@ -1527,22 +1986,28 @@
             if (!confirm('Czy na pewno chcesz usunąć tę grę z biblioteki?')) return;
             
             try {
-                await fetch(API_URL + '/api/users/' + currentUser + '/library/' + gameId, {
+                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library/' + gameId, {
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 
-                showNotification('Usunięto z biblioteki');
-                loadLibrary();
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Usunięto z biblioteki');
+                    loadLibrary();
+                } else {
+                    showNotification(data.error || 'Błąd usuwania', true);
+                }
             } catch (e) {
-                showNotification('Błąd usuwania');
+                showNotification('Błąd usuwania', true);
             }
         }
 
         // Friends Functions
         async function loadFriends() {
             try {
-                const response = await fetch(API_URL + '/api/friends/' + currentUser, {
+                const response = await fetch(API_URL + '/api/friends/' + currentUser + '?t=' + Date.now(), {
                     headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 const data = await response.json();
@@ -1550,7 +2015,6 @@
                 friends = data.friends || [];
                 renderFriends(data.friends || [], data.pendingInvites || []);
                 
-                // Update badge
                 const badge = document.getElementById('friendsBadge');
                 if (data.pendingInvites && data.pendingInvites.length > 0) {
                     badge.textContent = data.pendingInvites.length;
@@ -1567,7 +2031,7 @@
         function renderFriends(friendsList, pending) {
             const container = document.getElementById('friendsList');
             
-            let html = '<h3 style="margin-bottom: 15px;">Twoi znajomi</h3>';
+            let html = '<h3 style="margin-bottom: 15px;">Twoi znajomi (' + friendsList.length + ')</h3>';
             
             if (friendsList.length === 0) {
                 html += '<div class="empty-state">Nie masz jeszcze znajomych</div>';
@@ -1581,35 +2045,37 @@
                                 (f.status === 'online' ? '🟢 Online' : '🔴 Offline') +
                             '</div>' +
                         '</div>' +
+                        '<div class="friend-actions">' +
+                            '<button class="friend-remove-btn" onclick="removeFriend(\'' + f.username + '\')" title="Usuń znajomego">×</button>' +
+                        '</div>' +
                     '</div>';
                 }).join('');
             }
             
             container.innerHTML = html;
             
-            // Add click listeners
             container.querySelectorAll('.friend-item').forEach(function(item) {
-                item.addEventListener('click', function() {
-                    openChat(this.getAttribute('data-friend'));
+                item.addEventListener('click', function(e) {
+                    if (!e.target.closest('.friend-remove-btn')) {
+                        openChat(this.getAttribute('data-friend'));
+                    }
                 });
             });
             
-            // Render pending invites
             const pendingContainer = document.getElementById('pendingInvites');
             if (pending && pending.length > 0) {
                 pendingContainer.innerHTML = 
-                    '<h3 style="margin: 20px 0 15px;">Oczekujące zaproszenia</h3>' +
+                    '<h3 style="margin: 20px 0 15px;">Oczekujące zaproszenia (' + pending.length + ')</h3>' +
                     pending.map(function(p) {
                         return '<div class="invite-item">' +
                             '<span>' + p.from + '</span>' +
                             '<div class="invite-actions">' +
-                                '<button class="btn-icon btn-accept" data-from="' + p.from + '" data-action="accept">✓</button>' +
-                                '<button class="btn-icon btn-decline" data-from="' + p.from + '" data-action="decline">✕</button>' +
+                                '<button class="btn-icon btn-accept" data-from="' + p.from + '" data-action="accept" title="Akceptuj">✓</button>' +
+                                '<button class="btn-icon btn-decline" data-from="' + p.from + '" data-action="decline" title="Odrzuć">✕</button>' +
                             '</div>' +
                         '</div>';
                     }).join('');
                 
-                // Add listeners
                 pendingContainer.querySelectorAll('.btn-icon').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         respondInvite(this.getAttribute('data-from'), this.getAttribute('data-action') === 'accept');
@@ -1621,14 +2087,23 @@
         }
 
         async function sendFriendRequest() {
-            const username = document.getElementById('friendUsername').value;
+            const username = document.getElementById('friendUsername').value.trim();
             if (!username || username === currentUser) {
-                showNotification('Wpisz poprawną nazwę użytkownika');
+                showNotification('Wpisz poprawną nazwę użytkownika', true);
                 return;
             }
             
             try {
-                await fetch(API_URL + '/api/friends/add', {
+                // Try Socket.IO first
+                if (socket && socket.connected) {
+                    socket.emit('friend_request_sent', { toUser: username });
+                    showNotification('Zaproszenie wysłane!');
+                    document.getElementById('friendUsername').value = '';
+                    return;
+                }
+                
+                // Fallback to HTTP
+                const response = await fetch(API_URL + '/api/friends/add', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1637,16 +2112,31 @@
                     body: JSON.stringify({ fromUser: currentUser, toUser: username })
                 });
                 
-                showNotification('Zaproszenie wysłane!');
-                document.getElementById('friendUsername').value = '';
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Zaproszenie wysłane!');
+                    document.getElementById('friendUsername').value = '';
+                } else {
+                    showNotification(data.error || 'Błąd wysyłania', true);
+                }
             } catch (e) {
-                showNotification('Błąd wysyłania zaproszenia');
+                showNotification('Błąd wysyłania zaproszenia', true);
             }
         }
 
         async function respondInvite(fromUser, accept) {
             try {
-                await fetch(API_URL + '/api/friends/respond', {
+                // Try Socket.IO first
+                if (socket && socket.connected) {
+                    socket.emit('friend_respond', { fromUser: fromUser, accept: accept });
+                    showNotification(accept ? 'Dodano znajomego!' : 'Odrzucono zaproszenie');
+                    loadFriends();
+                    return;
+                }
+                
+                // Fallback to HTTP
+                const response = await fetch(API_URL + '/api/friends/respond', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1659,10 +2149,45 @@
                     })
                 });
                 
-                showNotification(accept ? 'Dodano znajomego!' : 'Odrzucono zaproszenie');
-                loadFriends();
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(accept ? 'Dodano znajomego!' : 'Odrzucono zaproszenie');
+                    loadFriends();
+                } else {
+                    showNotification(data.error || 'Błąd', true);
+                }
             } catch (e) {
-                showNotification('Błąd odpowiadania na zaproszenie');
+                showNotification('Błąd odpowiadania na zaproszenie', true);
+            }
+        }
+
+        async function removeFriend(friendName) {
+            if (!confirm('Usunąć ' + friendName + ' ze znajomych?')) return;
+            
+            try {
+                const response = await fetch(API_URL + '/api/friends/remove', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + currentToken
+                    },
+                    body: JSON.stringify({ 
+                        username: currentUser,
+                        friendName: friendName 
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Znajomy usunięty');
+                    loadFriends();
+                } else {
+                    showNotification(data.error || 'Błąd usuwania', true);
+                }
+            } catch (e) {
+                showNotification('Błąd usuwania znajomego', true);
             }
         }
 
@@ -1678,7 +2203,7 @@
             if (!currentChatFriend) return;
             
             try {
-                const response = await fetch(API_URL + '/api/chat/' + currentUser + '/' + currentChatFriend, {
+                const response = await fetch(API_URL + '/api/chat/' + currentUser + '/' + currentChatFriend + '?t=' + Date.now(), {
                     headers: { 'Authorization': 'Bearer ' + currentToken }
                 });
                 const data = await response.json();
@@ -1694,7 +2219,9 @@
                 }).join('');
                 
                 container.scrollTop = container.scrollHeight;
-            } catch (e) {}
+            } catch (e) {
+                document.getElementById('chatMessages').innerHTML = '<div class="empty-state">Błąd ładowania czatu</div>';
+            }
         }
 
         async function sendMessage() {
@@ -1702,8 +2229,20 @@
             const content = input.value.trim();
             if (!content || !currentChatFriend) return;
             
+            // Use Socket.IO
+            if (socket && socket.connected) {
+                socket.emit('send_message', {
+                    toUser: currentChatFriend,
+                    content: content,
+                    tempId: Date.now()
+                });
+                input.value = '';
+                return;
+            }
+            
+            // Fallback to HTTP
             try {
-                await fetch(API_URL + '/api/chat/send', {
+                const response = await fetch(API_URL + '/api/chat/send', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1716,10 +2255,16 @@
                     })
                 });
                 
-                input.value = '';
-                loadChat();
+                const data = await response.json();
+                
+                if (data.success) {
+                    input.value = '';
+                    loadChat();
+                } else {
+                    showNotification(data.error || 'Błąd wysyłania', true);
+                }
             } catch (e) {
-                showNotification('Błąd wysyłania wiadomości');
+                showNotification('Błąd wysyłania wiadomości', true);
             }
         }
 
@@ -1729,15 +2274,16 @@
         }
 
         // Utility
-        function showNotification(message) {
+        function showNotification(message, isError = false) {
             const div = document.createElement('div');
-            div.className = 'notification';
+            div.className = 'notification' + (isError ? ' error' : '');
             div.textContent = message;
             document.body.appendChild(div);
             setTimeout(function() { div.remove(); }, 3000);
         }
 
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
@@ -1748,6 +2294,13 @@
             if (e.key === 'Escape') {
                 closeGameModal();
                 closeChat();
+            }
+        });
+
+        // Handle window beforeunload
+        window.addEventListener('beforeunload', function() {
+            if (socket) {
+                socket.disconnect();
             }
         });
     </script>
