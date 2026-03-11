@@ -29,7 +29,7 @@ const io = new Server(server, {
 });
 
 // Konfiguracja
-const PORT = process.env.PORT || 8100;
+const PORT = process.env.PORT || 10000;
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 // ID kanałów Discord (TYLKO do powiadomień i backupu awaryjnego)
@@ -48,6 +48,182 @@ const PING_INTERVAL = 2 * 60 * 1000;
 
 // Ścieżka lokalna na alwaysdata
 const BASE_PATH = '/home/dom-kom/SYS/TEM';
+
+// === DROPBOX CONFIGURATION ===
+const DROPBOX_CONFIG = {
+    refreshToken: process.env.DROPBOX_REFRESH_TOKEN || '47v0EqFCtcoAAAAAAAAAAfpTfXOTlKIav64b9Qy-sYuu3DstFy6jU72bwoMIjdj2',
+    clientId: process.env.DROPBOX_CLIENT_ID || 'ux7zx7j4lhwqkhs',
+    clientSecret: process.env.DROPBOX_CLIENT_SECRET || 'q83ujxq006ijh9n',
+    tokenUrl: 'https://api.dropbox.com/oauth2/token'
+};
+
+// Dropbox Token Manager
+class DropboxTokenManager {
+    constructor() {
+        this.accessToken = null;
+        this.expiresAt = null;
+        this.refreshTimer = null;
+        this.isRefreshing = false;
+    }
+
+    async initialize() {
+        console.log('📦 Inicjalizacja Dropbox Token Manager...');
+        await this.refreshAccessToken();
+        
+        // Ustaw automatyczne odświeżanie co 3.5h (przed wygaśnięciem po 4h)
+        const refreshInterval = 3.5 * 60 * 60 * 1000; // 3.5 godziny w ms
+        this.refreshTimer = setInterval(() => {
+            this.refreshAccessToken().catch(err => {
+                console.error('❌ Błąd automatycznego odświeżania tokena:', err.message);
+            });
+        }, refreshInterval);
+        
+        console.log(`✅ Dropbox Token Manager aktywny (odświeżanie co 3.5h)`);
+    }
+
+    async refreshAccessToken() {
+        if (this.isRefreshing) {
+            console.log('⏳ Odświeżanie tokena już w trakcie...');
+            return;
+        }
+
+        this.isRefreshing = true;
+        
+        try {
+            console.log('🔄 Odświeżanie Dropbox access token...');
+            
+            const params = new URLSearchParams();
+            params.append('grant_type', 'refresh_token');
+            params.append('refresh_token', DROPBOX_CONFIG.refreshToken);
+            params.append('client_id', DROPBOX_CONFIG.clientId);
+            params.append('client_secret', DROPBOX_CONFIG.clientSecret);
+
+            const response = await fetch(DROPBOX_CONFIG.tokenUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: params.toString()
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Dropbox API error: ${response.status} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            
+            this.accessToken = data.access_token;
+            // expires_in jest w sekundach, zamieniamy na timestamp
+            this.expiresAt = Date.now() + (data.expires_in * 1000);
+            
+            console.log(`✅ Nowy Dropbox access token uzyskany`);
+            console.log(`   Wygasa za: ${Math.floor(data.expires_in / 3600)}h ${Math.floor((data.expires_in % 3600) / 60)}m`);
+            
+            // Powiadomienie na Discord o odświeżeniu (opcjonalne, dla debug)
+            if (discordReady) {
+                const embed = new EmbedBuilder()
+                    .setTitle('🔄 Dropbox Token Odświeżony')
+                    .setDescription('Access token został pomyślnie odświeżony')
+                    .addFields(
+                        { name: 'Wygasa za', value: `${Math.floor(data.expires_in / 3600)} godzin`, inline: true },
+                        { name: 'Następne odświeżenie', value: 'za 3.5h', inline: true }
+                    )
+                    .setColor(0x00d4ff)
+                    .setTimestamp();
+                
+                await sendDiscordNotification(embed).catch(() => {});
+            }
+
+        } catch (error) {
+            console.error('❌ Błąd podczas odświeżania tokena Dropbox:', error.message);
+            
+            // Powiadomienie o błędzie
+            if (discordReady) {
+                const embed = new EmbedBuilder()
+                    .setTitle('⚠️ Błąd Dropbox Token')
+                    .setDescription(`Nie udało się odświeżyć access tokena\n\`${error.message}\``)
+                    .setColor(0xff0000)
+                    .setTimestamp();
+                
+                await sendDiscordNotification(embed).catch(() => {});
+            }
+            
+            throw error;
+        } finally {
+            this.isRefreshing = false;
+        }
+    }
+
+    getAccessToken() {
+        if (!this.accessToken) {
+            throw new Error('Dropbox access token nie jest dostępny. Poczekaj na inicjalizację.');
+        }
+        
+        // Sprawdź czy token nie wygasł (z marginesem 5 minut)
+        if (this.expiresAt && Date.now() > (this.expiresAt - 5 * 60 * 1000)) {
+            console.log('⚠️ Token wygasa za mniej niż 5 minut, wymuszam odświeżenie...');
+            this.refreshAccessToken().catch(err => console.error('Błąd odświeżania:', err));
+        }
+        
+        return this.accessToken;
+    }
+
+    async getValidAccessToken() {
+        // Jeśli token wygasł lub go nie ma, odśwież
+        if (!this.accessToken || (this.expiresAt && Date.now() > (this.expiresAt - 5 * 60 * 1000))) {
+            await this.refreshAccessToken();
+        }
+        return this.accessToken;
+    }
+
+    stop() {
+        if (this.refreshTimer) {
+            clearInterval(this.refreshTimer);
+            this.refreshTimer = null;
+        }
+    }
+}
+
+// Inicjalizacja managera tokenów Dropbox
+const dropboxTokenManager = new DropboxTokenManager();
+
+// Funkcja pomocnicza do Dropbox API
+async function dropboxApiRequest(endpoint, options = {}) {
+    const token = await dropboxTokenManager.getValidAccessToken();
+    
+    const defaultOptions = {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            ...options.headers
+        }
+    };
+    
+    const response = await fetch(`https://api.dropboxapi.com/2${endpoint}`, {
+        ...defaultOptions,
+        ...options
+    });
+    
+    if (response.status === 401) {
+        // Token wygasł, spróbuj odświeżyć i ponowić
+        await dropboxTokenManager.refreshAccessToken();
+        const newToken = dropboxTokenManager.getAccessToken();
+        
+        const retryResponse = await fetch(`https://api.dropboxapi.com/2${endpoint}`, {
+            ...defaultOptions,
+            headers: {
+                ...defaultOptions.headers,
+                'Authorization': `Bearer ${newToken}`
+            },
+            ...options
+        });
+        
+        return retryResponse;
+    }
+    
+    return response;
+}
 
 const PATHS = {
     base: BASE_PATH,
@@ -684,6 +860,10 @@ app.get('/health', async (req, res) => {
     const response = {
         status: 'OK',
         discord: discordReady,
+        dropbox: {
+            connected: !!dropboxTokenManager.accessToken,
+            expiresAt: dropboxTokenManager.expiresAt ? new Date(dropboxTokenManager.expiresAt).toISOString() : null
+        },
         localStorage: true,
         basePath: BASE_PATH,
         websocket: {
@@ -717,6 +897,47 @@ app.get('/test', (req, res) => {
     });
 });
 
+// Endpoint testowy Dropbox - sprawdza czy token działa
+app.get('/api/dropbox/test', async (req, res) => {
+    try {
+        const response = await dropboxApiRequest('/users/get_current_account', {
+            method: 'POST',
+            body: JSON.stringify(null)
+        });
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Dropbox API error: ${error}`);
+        }
+        
+        const data = await response.json();
+        res.json({
+            success: true,
+            account: {
+                name: data.name.display_name,
+                email: data.email,
+                account_id: data.account_id
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Endpoint do ręcznego odświeżenia tokena (dla admina)
+app.post('/api/dropbox/refresh', async (req, res) => {
+    try {
+        await dropboxTokenManager.refreshAccessToken();
+        res.json({
+            success: true,
+            message: 'Token odświeżony',
+            expiresAt: new Date(dropboxTokenManager.expiresAt).toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serwowanie plików statycznych
 app.get('/', async (req, res) => {
     try {
@@ -729,6 +950,7 @@ app.get('/', async (req, res) => {
             message: 'Nebula Game Server',
             status: 'online',
             discord: discordReady,
+            dropbox: !!dropboxTokenManager.accessToken,
             endpoints: ['/games', '/api/auth/login', '/api/auth/register', '/health']
         });
     }
@@ -1627,6 +1849,11 @@ server.listen(PORT, '0.0.0.0', () => {
 console.log('📋 Server starting...');
 
 initLocalStorage().then(() => {
+    // Inicjalizacja Dropbox Token Manager
+    dropboxTokenManager.initialize().catch(err => {
+        console.error('❌ Błąd inicjalizacji Dropbox:', err.message);
+    });
+    
     if (DISCORD_TOKEN) {
         console.log('🔌 Łączenie z Discordem (opcjonalnie)...');
         
@@ -1643,7 +1870,7 @@ initLocalStorage().then(() => {
             sendDiscordNotification(
                 new (require('discord.js').EmbedBuilder)()
                     .setTitle('🟢 Serwer wystartował')
-                    .setDescription(`Port: ${PORT}\nStorage: ${BASE_PATH}`)
+                    .setDescription(`Port: ${PORT}\nStorage: ${BASE_PATH}\nDropbox: ${dropboxTokenManager.accessToken ? '✅' : '❌'}`)
                     .setColor(0x00ff00)
                     .setTimestamp()
             ).catch(() => {});
@@ -1665,6 +1892,9 @@ initLocalStorage().then(() => {
 process.on('SIGINT', () => {
     console.log('🛑 SIGINT received - shutting down gracefully');
     isShuttingDown = true;
+    
+    // Zatrzymaj timer Dropbox
+    dropboxTokenManager.stop();
     
     if (discordReady) {
         sendDiscordNotification(
