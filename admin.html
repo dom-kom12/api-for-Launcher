@@ -34,20 +34,22 @@
             font-size: 28px;
         }
 
-        .guild-info {
+        .storage-info {
             color: #6a6a7a;
             font-size: 14px;
             margin-top: 5px;
         }
 
-        .guild-selector {
-            background: #16161f;
-            border: 1px solid #2a2a3a;
-            color: #fff;
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 14px;
-            cursor: pointer;
+        .storage-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #0061fe20;
+            color: #0061fe;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
         }
         
         .btn {
@@ -718,18 +720,44 @@
             width: 0%;
             transition: width 0.3s;
         }
+
+        /* Dropbox status */
+        .dropbox-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #0061fe15;
+            color: #0061fe;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 13px;
+            margin-left: 15px;
+        }
+
+        .dropbox-status.online {
+            background: #00ff8815;
+            color: #00ff88;
+        }
+
+        .dropbox-status.offline {
+            background: #ff336615;
+            color: #ff3366;
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <div>
             <h1>🌌 NEBULA ADMIN</h1>
-            <div class="guild-info" id="guildInfo">Ładowanie...</div>
+            <div class="storage-info" id="storageInfo">
+                <span class="storage-badge">☁️ Dropbox</span>
+                <span id="gamesCount">Ładowanie...</span>
+            </div>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
-            <select class="guild-selector" id="guildSelector" onchange="changeGuild()">
-                <option value="">Wybierz serwer...</option>
-            </select>
+            <div class="dropbox-status online" id="dropboxStatus">
+                <span>●</span> Dropbox Online
+            </div>
             <button class="btn btn-secondary" onclick="checkCompatibility()">🖥️ Sprawdź PC</button>
             <button class="btn btn-primary" onclick="openModal()">➕ Dodaj Grę</button>
         </div>
@@ -739,6 +767,7 @@
         <div class="toolbar">
             <input type="text" class="search-box" id="searchInput" placeholder="🔍 Szukaj gry..." onkeyup="filterGames()">
             <button class="btn btn-secondary" onclick="refreshData()">🔄 Odśwież</button>
+            <button class="btn btn-secondary" onclick="checkDropboxStatus()">☁️ Status Dropbox</button>
         </div>
 
         <!-- Panel kompatybilności -->
@@ -952,17 +981,16 @@
         let games = [];
         let editingId = null;
         let userPC = null;
-        let currentGuildId = '';
         let currentScreenshots = [];
-        let currentIconType = 'emoji'; // 'emoji' lub 'image'
+        let currentIconType = 'emoji';
 
         // Inicjalizacja
         init();
 
         async function init() {
-            await loadGuilds();
             setupDragAndDrop();
             await loadGames();
+            await checkDropboxStatus();
         }
 
         function setupDragAndDrop() {
@@ -999,11 +1027,6 @@
         }
 
         async function handleFiles(files) {
-            if (!currentGuildId) {
-                showToast('Najpierw wybierz serwer!', 'error');
-                return;
-            }
-
             const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
             
             if (imageFiles.length === 0) {
@@ -1034,7 +1057,7 @@
             container.appendChild(item);
 
             try {
-                const response = await fetch(`${API_URL}/api/upload/screenshot?guildId=${currentGuildId}${editingId ? '&gameId=' + editingId : ''}`, {
+                const response = await fetch(`${API_URL}/api/upload/screenshot${editingId ? '?gameId=' + editingId : ''}`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1066,7 +1089,7 @@
             preview.innerHTML = '<div class="loading"></div>';
 
             try {
-                const response = await fetch(`${API_URL}/api/upload/icon?guildId=${currentGuildId}`, {
+                const response = await fetch(`${API_URL}/api/upload/icon`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1096,53 +1119,32 @@
             document.getElementById('emojiPreview').textContent = value || '🎮';
         }
 
-        async function loadGuilds() {
+        async function checkDropboxStatus() {
             try {
                 const response = await fetch(`${API_URL}/health`);
                 const data = await response.json();
                 
-                const selector = document.getElementById('guildSelector');
-                selector.innerHTML = '<option value="">Wybierz serwer...</option>';
-                
-                if (data.guildsReady && data.guildsReady.length > 0) {
-                    data.guildsReady.forEach(guild => {
-                        const option = document.createElement('option');
-                        option.value = guild.id;
-                        option.textContent = `${guild.name} (${guild.memberCount} osób)`;
-                        selector.appendChild(option);
-                    });
-                    
-                    if (data.guildsReady.length > 0) {
-                        currentGuildId = data.guildsReady[0].id;
-                        selector.value = currentGuildId;
-                    }
+                const statusEl = document.getElementById('dropboxStatus');
+                if (data.dropbox && data.dropbox.connected) {
+                    statusEl.className = 'dropbox-status online';
+                    statusEl.innerHTML = '<span>●</span> Dropbox Online';
+                } else {
+                    statusEl.className = 'dropbox-status offline';
+                    statusEl.innerHTML = '<span>●</span> Dropbox Offline';
                 }
             } catch (error) {
-                console.error('Błąd ładowania guildów:', error);
+                console.error('Błąd sprawdzania statusu:', error);
+                const statusEl = document.getElementById('dropboxStatus');
+                statusEl.className = 'dropbox-status offline';
+                statusEl.innerHTML = '<span>●</span> Błąd połączenia';
             }
-        }
-
-        function changeGuild() {
-            const selector = document.getElementById('guildSelector');
-            currentGuildId = selector.value;
-            loadGames();
         }
 
         async function loadGames() {
-            if (!currentGuildId) {
-                document.getElementById('gamesGrid').innerHTML = `
-                    <div class="empty-state" style="grid-column: 1/-1;">
-                        <h3>📂 Wybierz serwer</h3>
-                        <p>Wybierz serwer Discord z listy powyżej, aby zarządzać grami</p>
-                    </div>
-                `;
-                return;
-            }
-
             try {
-                document.getElementById('guildInfo').innerHTML = `<span class="loading"></span> Ładowanie...`;
+                document.getElementById('gamesCount').innerHTML = '<span class="loading"></span> Ładowanie...';
                 
-                const response = await fetch(`${API_URL}/games?guildId=${currentGuildId}`, {
+                const response = await fetch(`${API_URL}/games`, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -1152,13 +1154,13 @@
                 const data = await response.json();
                 games = Array.isArray(data) ? data : [];
                 
-                const guildName = document.getElementById('guildSelector').selectedOptions[0]?.text.split('(')[0] || 'Unknown';
-                document.getElementById('guildInfo').innerHTML = `${guildName.trim()} • ${games.length} gier`;
+                document.getElementById('gamesCount').textContent = `${games.length} gier w bazie`;
                 renderGames();
                 
             } catch (error) {
                 console.error('Błąd ładowania:', error);
                 showToast('Błąd ładowania gier: ' + error.message, 'error');
+                document.getElementById('gamesCount').textContent = 'Błąd ładowania';
                 document.getElementById('gamesGrid').innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
                         <h3>⚠️ Błąd połączenia</h3>
@@ -1174,6 +1176,7 @@
         function refreshData() {
             showToast('Odświeżanie...', 'info');
             loadGames();
+            checkDropboxStatus();
         }
 
         function checkCompatibility() {
@@ -1280,8 +1283,8 @@
         async function saveGameToServer(gameData) {
             try {
                 const url = editingId 
-                    ? `${API_URL}/api/games/${editingId}?guildId=${currentGuildId}` 
-                    : `${API_URL}/api/games?guildId=${currentGuildId}`;
+                    ? `${API_URL}/api/games/${editingId}` 
+                    : `${API_URL}/api/games`;
                 
                 const method = editingId ? 'PUT' : 'POST';
                 
@@ -1314,7 +1317,7 @@
 
         async function deleteGameFromServer(id) {
             try {
-                const response = await fetch(`${API_URL}/api/games/${id}?guildId=${currentGuildId}`, {
+                const response = await fetch(`${API_URL}/api/games/${id}`, {
                     method: 'DELETE',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -1466,11 +1469,6 @@
         }
 
         function openModal(id = null) {
-            if (!currentGuildId) {
-                showToast('Najpierw wybierz serwer!', 'error');
-                return;
-            }
-
             editingId = id;
             currentScreenshots = [];
             currentIconType = 'emoji';
