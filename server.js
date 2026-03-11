@@ -1,4 +1,4 @@
-// server.js - ALWAYSDATA WERSJA z DROPBOX STORAGE
+// server.js - ALWAYSDATA WERSJA z DROPBOX STORAGE (POPRAWIONA)
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -46,7 +46,7 @@ const DEFAULT_GUILD_ID = ALLOWED_GUILDS[0];
 // Self-ping
 const PING_INTERVAL = 2 * 60 * 1000;
 
-// Lokalna ścieżka tylko dla tymczasowych plików (uploady przed wysłaniem do Dropbox)
+// Lokalna ścieżka tylko dla tymczasowych plików
 const BASE_PATH = '/home/dom-kom/SYS/TEM';
 
 // === DROPBOX CONFIGURATION ===
@@ -55,7 +55,7 @@ const DROPBOX_CONFIG = {
     clientId: process.env.DROPBOX_CLIENT_ID || 'ux7zx7j4lhwqkhs',
     clientSecret: process.env.DROPBOX_CLIENT_SECRET || 'q83ujxq006ijh9n',
     tokenUrl: 'https://api.dropbox.com/oauth2/token',
-    basePath: '/nebula-game-server' // Folder w Dropbox gdzie będą wszystkie dane
+    basePath: '/nebula-game-server'
 };
 
 // Dropbox Token Manager
@@ -183,40 +183,55 @@ class DropboxTokenManager {
 // Inicjalizacja managera tokenów Dropbox
 const dropboxTokenManager = new DropboxTokenManager();
 
-// === DROPBOX STORAGE API ===
+// === DROPBOX STORAGE API (POPRAWIONE) ===
 
-// Funkcja pomocnicza do Dropbox API
+// Funkcja pomocnicza do Dropbox API - POPRAWIONA
 async function dropboxApiRequest(endpoint, options = {}) {
     const token = await dropboxTokenManager.getValidAccessToken();
     
     const isContentApi = endpoint.startsWith('/files/download') || endpoint.startsWith('/files/upload');
     const baseUrl = isContentApi ? 'https://content.dropboxapi.com/2' : 'https://api.dropboxapi.com/2';
     
-    const defaultOptions = {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            ...options.headers
-        }
+    // Przygotuj nagłówki - WAŻNE: Authorization MUSI być w headers
+    const headers = {
+        'Authorization': `Bearer ${token}`,
+        ...options.headers
     };
+    
+    // Jeśli nie ma Content-Type i nie jest to upload/download, dodaj domyślny
+    if (!headers['Content-Type'] && !isContentApi) {
+        headers['Content-Type'] = 'application/json';
+    }
     
     const url = `${baseUrl}${endpoint}`;
     
-    const response = await fetch(url, {
-        ...defaultOptions,
-        ...options
-    });
+    console.log(`📡 Dropbox API: ${endpoint}`);
+    console.log(`   URL: ${url}`);
+    console.log(`   Headers: ${JSON.stringify({ ...headers, Authorization: 'Bearer ***' })}`);
     
+    const fetchOptions = {
+        method: options.method || 'POST',
+        headers: headers
+    };
+    
+    // Dodaj body tylko jeśli istnieje
+    if (options.body !== undefined) {
+        fetchOptions.body = options.body;
+    }
+    
+    const response = await fetch(url, fetchOptions);
+    
+    // Jeśli 401, spróbuj odświeżyć token i ponowić
     if (response.status === 401) {
+        console.log('🔄 Token wygasł, odświeżam...');
         await dropboxTokenManager.refreshAccessToken();
         const newToken = dropboxTokenManager.getAccessToken();
         
+        headers['Authorization'] = `Bearer ${newToken}`;
+        
         const retryResponse = await fetch(url, {
-            ...defaultOptions,
-            headers: {
-                ...defaultOptions.headers,
-                'Authorization': `Bearer ${newToken}`
-            },
-            ...options
+            ...fetchOptions,
+            headers: headers
         });
         
         return retryResponse;
@@ -229,13 +244,16 @@ async function dropboxApiRequest(endpoint, options = {}) {
 async function saveToDropbox(dropboxPath, content) {
     try {
         const buffer = Buffer.from(content, 'utf-8');
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        console.log(`💾 Zapisywanie do Dropbox: ${fullPath}`);
         
         const response = await dropboxApiRequest('/files/upload', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/octet-stream',
                 'Dropbox-API-Arg': JSON.stringify({
-                    path: `${DROPBOX_CONFIG.basePath}${dropboxPath}`,
+                    path: fullPath,
                     mode: 'overwrite',
                     autorename: false,
                     mute: false
@@ -250,7 +268,7 @@ async function saveToDropbox(dropboxPath, content) {
         }
         
         const result = await response.json();
-        console.log(`☁️ Zapisano do Dropbox: ${dropboxPath}`);
+        console.log(`✅ Zapisano do Dropbox: ${dropboxPath}`);
         return result;
     } catch (error) {
         console.error(`❌ Błąd zapisu do Dropbox (${dropboxPath}):`, error.message);
@@ -261,17 +279,20 @@ async function saveToDropbox(dropboxPath, content) {
 // Odczytaj plik z Dropbox (tekstowy/JSON)
 async function loadFromDropbox(dropboxPath, defaultValue = null) {
     try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        console.log(`📂 Odczyt z Dropbox: ${fullPath}`);
+        
         const response = await dropboxApiRequest('/files/download', {
             method: 'POST',
             headers: {
                 'Dropbox-API-Arg': JSON.stringify({
-                    path: `${DROPBOX_CONFIG.basePath}${dropboxPath}`
+                    path: fullPath
                 })
             }
         });
         
         if (response.status === 409) {
-            // Plik nie istnieje
             console.log(`📭 Plik nie istnieje w Dropbox: ${dropboxPath}`);
             return defaultValue;
         }
@@ -282,10 +303,10 @@ async function loadFromDropbox(dropboxPath, defaultValue = null) {
         }
         
         const content = await response.text();
-        console.log(`📥 Odczytano z Dropbox: ${dropboxPath}`);
+        console.log(`✅ Odczytano z Dropbox: ${dropboxPath}`);
         return JSON.parse(content);
     } catch (error) {
-        if (error.message.includes('not_found') || error.message.includes('path_lookup')) {
+        if (error.message.includes('not_found') || error.message.includes('path_lookup') || error.message.includes('path/not_found')) {
             return defaultValue;
         }
         console.error(`❌ Błąd odczytu z Dropbox (${dropboxPath}):`, error.message);
@@ -296,13 +317,15 @@ async function loadFromDropbox(dropboxPath, defaultValue = null) {
 // Usuń plik z Dropbox
 async function deleteFromDropbox(dropboxPath) {
     try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
         const response = await dropboxApiRequest('/files/delete_v2', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                path: `${DROPBOX_CONFIG.basePath}${dropboxPath}`
+                path: fullPath
             })
         });
         
@@ -322,13 +345,15 @@ async function deleteFromDropbox(dropboxPath) {
 // Lista plików w folderze Dropbox
 async function listDropboxFolder(dropboxPath) {
     try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
         const response = await dropboxApiRequest('/files/list_folder', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                path: `${DROPBOX_CONFIG.basePath}${dropboxPath}`,
+                path: fullPath,
                 recursive: false,
                 include_media_info: false,
                 include_deleted: false
@@ -356,13 +381,17 @@ async function listDropboxFolder(dropboxPath) {
 // Utwórz folder w Dropbox
 async function createDropboxFolder(dropboxPath) {
     try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        console.log(`📁 Tworzenie folderu w Dropbox: ${fullPath}`);
+        
         const response = await dropboxApiRequest('/files/create_folder_v2', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                path: `${DROPBOX_CONFIG.basePath}${dropboxPath}`,
+                path: fullPath,
                 autorename: false
             })
         });
@@ -372,23 +401,25 @@ async function createDropboxFolder(dropboxPath) {
             throw new Error(`Dropbox create folder error: ${error}`);
         }
         
-        console.log(`📁 Utworzono folder w Dropbox: ${dropboxPath}`);
+        console.log(`✅ Utworzono folder w Dropbox: ${dropboxPath}`);
         return true;
     } catch (error) {
         console.error(`❌ Błąd tworzenia folderu Dropbox (${dropboxPath}):`, error.message);
-        return false;
+        throw error;
     }
 }
 
 // Zapisz binarny plik (obraz) do Dropbox
 async function saveBinaryToDropbox(dropboxPath, buffer, mimeType) {
     try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
         const response = await dropboxApiRequest('/files/upload', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/octet-stream',
                 'Dropbox-API-Arg': JSON.stringify({
-                    path: `${DROPBOX_CONFIG.basePath}${dropboxPath}`,
+                    path: fullPath,
                     mode: 'overwrite',
                     autorename: false,
                     mute: false
@@ -403,7 +434,7 @@ async function saveBinaryToDropbox(dropboxPath, buffer, mimeType) {
         }
         
         const result = await response.json();
-        console.log(`☁️ Zapisano binarny plik do Dropbox: ${dropboxPath}`);
+        console.log(`✅ Zapisano binarny plik do Dropbox: ${dropboxPath}`);
         return result;
     } catch (error) {
         console.error(`❌ Błąd zapisu binarnego do Dropbox (${dropboxPath}):`, error.message);
@@ -411,16 +442,18 @@ async function saveBinaryToDropbox(dropboxPath, buffer, mimeType) {
     }
 }
 
-// Pobierz URL do pliku w Dropbox (do wyświetlania)
+// Pobierz URL do pliku w Dropbox
 async function getDropboxTemporaryLink(dropboxPath) {
     try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
         const response = await dropboxApiRequest('/files/get_temporary_link', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                path: `${DROPBOX_CONFIG.basePath}${dropboxPath}`
+                path: fullPath
             })
         });
         
@@ -452,7 +485,12 @@ async function initDropboxStructure() {
     ];
     
     for (const folder of folders) {
-        await createDropboxFolder(folder);
+        try {
+            await createDropboxFolder(folder);
+        } catch (err) {
+            console.error(`❌ Nie udało się utworzyć folderu ${folder}:`, err.message);
+            // Kontynuuj mimo błędu
+        }
     }
     
     // Inicjalizacja domyślnych plików globalnych
@@ -466,10 +504,14 @@ async function initDropboxStructure() {
     };
     
     for (const [filename, defaultData] of Object.entries(globalFiles)) {
-        const existing = await loadFromDropbox(`/global/${filename}`, null);
-        if (existing === null) {
-            await saveToDropbox(`/global/${filename}`, JSON.stringify(defaultData, null, 2));
-            console.log(`  📝 Utworzono w Dropbox: ${filename}`);
+        try {
+            const existing = await loadFromDropbox(`/global/${filename}`, null);
+            if (existing === null) {
+                await saveToDropbox(`/global/${filename}`, JSON.stringify(defaultData, null, 2));
+                console.log(`  📝 Utworzono w Dropbox: ${filename}`);
+            }
+        } catch (err) {
+            console.error(`❌ Błąd tworzenia pliku ${filename}:`, err.message);
         }
     }
     
@@ -508,12 +550,12 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Logowanie requestów
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} | ${req.method} ${req.path} | IP: ${req.ip} | Origin: ${req.headers.origin || 'none'}`);
+    console.log(`${new Date().toISOString()} | ${req.method} ${req.path} | IP: ${req.ip}`);
     next();
 });
 
-// Konfiguracja multer dla tymczasowego zapisu plików (przed wysłaniem do Dropbox)
-const storage = multer.memoryStorage(); // Zapisuj w pamięci, nie na dysku
+// Konfiguracja multer dla tymczasowego zapisu plików
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
     storage: storage,
@@ -552,17 +594,13 @@ async function initStorage() {
     console.log('📁 Inicjalizacja storage (Dropbox)...');
     
     try {
-        // Utwórz lokalny folder temp jeśli nie istnieje
         await fs.mkdir(PATHS.temp, { recursive: true });
-        
-        // Inicjalizuj strukturę Dropbox
         await initDropboxStructure();
-        
         console.log('✅ Storage gotowy (Dropbox)');
         return true;
     } catch (error) {
         console.error('❌ Błąd inicjalizacji storage:', error);
-        await sendEmergencyNotification(`🚨 Błąd inicjalizacji Dropbox storage: ${error.message}`);
+        await sendEmergencyNotification(`🚨 Błąd inicjalizacji Dropbox: ${error.message}`);
         return false;
     }
 }
@@ -570,10 +608,14 @@ async function initStorage() {
 // === FUNKCJE UŻYTKOWNIKÓW (DROPBOX) ===
 
 async function ensureUserDir(username) {
-    await createDropboxFolder(`/users/${username}`);
-    await createDropboxFolder(`/users/${username}/library`);
-    await createDropboxFolder(`/users/${username}/friends`);
-    await createDropboxFolder(`/users/${username}/settings`);
+    try {
+        await createDropboxFolder(`/users/${username}`);
+        await createDropboxFolder(`/users/${username}/library`);
+        await createDropboxFolder(`/users/${username}/friends`);
+        await createDropboxFolder(`/users/${username}/settings`);
+    } catch (err) {
+        // Folder może już istnieć
+    }
     return `/users/${username}`;
 }
 
@@ -595,7 +637,6 @@ async function saveGlobalFile(filename, data) {
     const dropboxPath = `/global/${filename}`;
     await saveToDropbox(dropboxPath, JSON.stringify(data, null, 2));
     
-    // Backup awaryjny na Discord jeśli to krytyczny plik
     if (discordReady && ['users.json', 'games.json'].includes(filename)) {
         try {
             await backupToGlobalData(filename, data);
@@ -611,13 +652,12 @@ async function loadGlobalFile(filename, defaultData = {}) {
     const dropboxPath = `/global/${filename}`;
     let data = await loadFromDropbox(dropboxPath, null);
     
-    // Próba przywrócenia z Discord jeśli brak w Dropbox
     if (data === null && discordReady) {
         try {
             data = await restoreFromGlobalData(filename);
             if (data) {
                 await saveToDropbox(dropboxPath, JSON.stringify(data, null, 2));
-                console.log(`📥 Przywrócono ${filename} z backupu Discord do Dropbox`);
+                console.log(`📥 Przywrócono ${filename} z backupu Discord`);
             }
         } catch (err) {
             console.log('⚠️ Przywracanie z Discord nie powiodło się:', err.message);
@@ -1865,13 +1905,10 @@ app.post('/api/upload/icon', upload.single('icon'), async (req, res) => {
         const filename = `${iconId}${ext}`;
         const dropboxPath = `/icons/${filename}`;
         
-        // Zapisz do Dropbox
         await saveBinaryToDropbox(dropboxPath, req.file.buffer, req.file.mimetype);
         
-        // Pobierz link do pliku
         const directLink = await getDropboxTemporaryLink(dropboxPath);
         
-        // Zapisz metadane
         const icons = await loadGlobalFile('icons.json', []);
         icons.push({
             id: iconId,
@@ -1910,13 +1947,10 @@ app.post('/api/upload/screenshot', upload.single('screenshot'), async (req, res)
         const filename = `${screenshotId}${ext}`;
         const dropboxPath = `/screenshots/${filename}`;
         
-        // Zapisz do Dropbox
         await saveBinaryToDropbox(dropboxPath, req.file.buffer, req.file.mimetype);
         
-        // Pobierz link do pliku
         const directLink = await getDropboxTemporaryLink(dropboxPath);
         
-        // Zapisz metadane
         const screenshots = await loadGlobalFile('screenshots.json', []);
         screenshots.push({
             id: screenshotId,
@@ -1961,10 +1995,8 @@ app.post('/api/upload/screenshots', upload.array('screenshots', 10), async (req,
             const filename = `${screenshotId}${ext}`;
             const dropboxPath = `/screenshots/${filename}`;
             
-            // Zapisz do Dropbox
             await saveBinaryToDropbox(dropboxPath, file.buffer, file.mimetype);
             
-            // Pobierz link do pliku
             const directLink = await getDropboxTemporaryLink(dropboxPath);
             
             screenshots.push({
@@ -1994,7 +2026,7 @@ app.post('/api/upload/screenshots', upload.array('screenshots', 10), async (req,
     }
 });
 
-// Serwowanie plików z Dropbox (przez proxy lub redirect)
+// Serwowanie plików z Dropbox
 app.get('/dropbox-file/*', async (req, res) => {
     try {
         const dropboxPath = '/' + req.params[0];
@@ -2004,7 +2036,6 @@ app.get('/dropbox-file/*', async (req, res) => {
             return res.status(404).json({ error: 'File not found' });
         }
         
-        // Redirect do tymczasowego linku Dropbox
         res.redirect(link);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -2018,7 +2049,6 @@ app.get('/api/screenshots/:gameId', async (req, res) => {
             .filter(s => s.gameId === req.params.gameId)
             .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
         
-        // Odśwież linki (są tymczasowe, 4h ważności)
         const refreshedScreenshots = await Promise.all(
             gameScreenshots.map(async (s) => {
                 const freshLink = await getDropboxTemporaryLink(s.dropboxPath);
@@ -2044,7 +2074,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`☁️ Dropbox Storage: ${DROPBOX_CONFIG.basePath}`);
     console.log(`🌐 Adres: http://localhost:${PORT}`);
     
-    // Self-ping
     setInterval(() => {
         try {
             const http = require('http');
@@ -2080,16 +2109,12 @@ server.listen(PORT, '0.0.0.0', () => {
 // Inicjalizacja
 console.log('📋 Server starting...');
 
-// Najpierw zainicjalizuj Dropbox Token Manager
 dropboxTokenManager.initialize().then(() => {
     console.log('✅ Dropbox Token Manager gotowy');
-    
-    // Potem inicjalizuj storage
     return initStorage();
 }).then(() => {
     console.log('✅ Storage gotowy');
     
-    // Na końcu Discord (opcjonalnie)
     if (DISCORD_TOKEN) {
         console.log('🔌 Łączenie z Discordem...');
         
