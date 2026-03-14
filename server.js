@@ -276,6 +276,403 @@ async function saveToDropbox(dropboxPath, content) {
     }
 }
 
+// === KONFIGURACJA BACKUPU ===
+const BACKUP_CONFIG = {
+    interval: 60 * 60 * 1000, // Co 1 godzinę (w ms)
+    maxBackups: 24, // Maksymalnie 24 kopie (ostatnie 24h)
+    folders: [
+        '/global',
+        '/users',
+        '/chats'
+    ]
+};
+
+// === FUNKCJE BACKUP ===
+
+// Utwórz timestamp w formacie YYYYMMDD_HHMMSS
+function getBackupTimestamp() {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+}
+
+// Skopiuj folder w Dropbox (rekursywnie)
+async function copyDropboxFolder(fromPath, toPath) {
+    try {
+        // Utwórz folder docelowy
+        await createDropboxFolder(toPath.replace(DROPBOX_CONFIG.basePath, ''));
+        
+        // Pobierz listę plików
+        const files = await listDropboxFolder(fromPath.replace(DROPBOX_CONFIG.basePath, ''));
+        
+        for (const file of files) {
+            const fileName = file.name;
+            const sourcePath = file.path_display;
+            const destPath = `${toPath}/${fileName}`;
+            
+            if (file['.tag'] === 'folder') {
+                // Rekursywnie kopiuj podfoldery
+                await copyDropboxFolder(sourcePath, destPath);
+            } else {
+                // Kopiuj plik
+                await dropboxApiRequest('/files/copy_v2', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        from_path: sourcePath,
+                        to_path: destPath,
+                        autorename: false
+                    })
+                });
+            }
+        }
+        
+        console.log(`📁 Skopiowano folder: ${fromPath} → ${toPath}`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Błąd kopiowania folderu ${fromPath}:`, error.message);
+        return false;
+    }
+}
+
+// GŁÓWNA FUNKCJA: Wykonaj pełny backup
+async function createFullBackup() {
+    const timestamp = getBackupTimestamp();
+    const backupFolder = `/backups/backup_${timestamp}`;
+    
+    console.log(`💾 Rozpoczynam backup: ${backupFolder}`);
+    
+    const backupResults = {
+        timestamp: timestamp,
+        folder: backupFolder,
+        success: [],
+        failed: []
+    };
+    
+    try {
+        // Utwórz główny folder backupu
+        await createDropboxFolder(backupFolder);
+        
+        // Kopiuj każdy folder z BACKUP_CONFIG
+        for (const folder of BACKUP_CONFIG.folders) {
+            const sourcePath = `${DROPBOX_CONFIG.basePath}${folder}`;
+            const destPath = `${DROPBOX_CONFIG.basePath}${backupFolder}${folder}`;
+            
+            const success = await copyDropboxFolder(sourcePath, destPath);
+            
+            if (success) {
+                backupResults.success.push(folder);
+            } else {
+                backupResults.failed.push(folder);
+            }
+        }
+        
+        // Zapisz metadane backupu
+        const metadata = {
+            timestamp: timestamp,
+            createdAt: new Date().toISOString(),
+            folders: backupResults.success,
+            failed: backupResults.failed,
+            totalSize: 0 // Można dodać obliczanie rozmiaru
+        };
+        
+        await saveToDropbox(`${backupFolder}/_metadata.json`, JSON.stringify(metadata, null, 2));
+        
+        // Wyczyść stare backupy (zostaw tylko maxBackups najnowszych)
+        await cleanupOldBackups();
+        
+        // Powiadomienie Discord
+        if (discordReady && backupResults.failed.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('💾 Automatyczny Backup')
+                .setDescription(`Backup wykonany pomyślnie`)
+                .addFields(
+                    { name: 'ID', value: timestamp, inline: true },
+                    { name: 'Foldery', value: backupResults.success.length.toString(), inline: true },
+                    { name: 'Status', value: '✅ OK', inline: true }
+                )
+                .setColor(0x00ff00)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        } else if (discordReady && backupResults.failed.length > 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('⚠️ Backup z błędami')
+                .setDescription(`Częściowy backup`)
+                .addFields(
+                    { name: 'ID', value: timestamp, inline: true },
+                    { name: 'OK', value: backupResults.success.join(', ') || 'brak', inline: false },
+                    { name: 'Błędy', value: backupResults.failed.join(', '), inline: false }
+                )
+                .setColor(0xffaa00)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        }
+        
+        console.log(`✅ Backup zakończony: ${timestamp}`);
+        return backupResults;
+        
+    } catch (error) {
+        console.error('❌ Błąd podczas backupu:', error.message);
+        
+        if (discordReady) {
+            const embed = new EmbedBuilder()
+                .setTitle('🚨 Błąd Backupu')
+                .setDescription(`Nie udało się wykonać backupu\n\`${error.message}\``)
+                .setColor(0xff0000)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        }
+        
+        throw error;
+    }
+}
+
+// Wyczyść stare backupy (zostaw tylko maxBackups najnowszych)
+async function cleanupOldBackups() {
+    try {
+        const backups = await listDropboxFolder('/backups');
+        
+        // Filtruj tylko foldery backup_*
+        const backupFolders = backups
+            .filter(b => b['.tag'] === 'folder' && b.name.startsWith('backup_'))
+            .sort((a, b) => b.name.localeCompare(a.name)); // Najnowsze pierwsze
+        
+        if (backupFolders.length > BACKUP_CONFIG.maxBackups) {
+            const toDelete = backupFolders.slice(BACKUP_CONFIG.maxBackups);
+            
+            for (const folder of toDelete) {
+                await deleteFromDropbox(`/backups/${folder.name}`);
+                console.log(`🗑️ Usunięto stary backup: ${folder.name}`);
+            }
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('❌ Błąd czyszczenia starych backupów:', error.message);
+        return false;
+    }
+}
+
+// PRZYWRACANIE: Przywróć z backupu
+async function restoreFromBackup(backupTimestamp) {
+    const backupFolder = `/backups/backup_${backupTimestamp}`;
+    
+    console.log(`📥 Przywracanie z backupu: ${backupFolder}`);
+    
+    try {
+        // Sprawdź czy backup istnieje
+        const metadata = await loadFromDropbox(`${backupFolder}/_metadata.json`, null);
+        if (!metadata) {
+            throw new Error('Backup nie istnieje lub jest uszkodzony');
+        }
+        
+        // Przywróć każdy folder
+        for (const folder of BACKUP_CONFIG.folders) {
+            const sourcePath = `${backupFolder}${folder}`;
+            const destPath = folder; // np. /global
+            
+            // Usuń obecny folder (opcjonalnie - można też najpierw zrobić backup obecnego stanu)
+            // await deleteFromDropbox(destPath);
+            
+            // Kopiuj z backupu
+            await copyDropboxFolder(
+                `${DROPBOX_CONFIG.basePath}${sourcePath}`,
+                `${DROPBOX_CONFIG.basePath}${destPath}`
+            );
+        }
+        
+        // Powiadomienie
+        if (discordReady) {
+            const embed = new EmbedBuilder()
+                .setTitle('📥 Przywracanie z Backupu')
+                .setDescription(`Dane przywrócone z backupu: ${backupTimestamp}`)
+                .setColor(0x00d4ff)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        }
+        
+        console.log(`✅ Przywracanie zakończone: ${backupTimestamp}`);
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Błąd przywracania:', error.message);
+        throw error;
+    }
+}
+
+// Lista dostępnych backupów
+async function listBackups() {
+    try {
+        const backups = await listDropboxFolder('/backups');
+        
+        const backupList = [];
+        for (const folder of backups.filter(b => b['.tag'] === 'folder' && b.name.startsWith('backup_'))) {
+            const metadata = await loadFromDropbox(`/backups/${folder.name}/_metadata.json`, null);
+            if (metadata) {
+                backupList.push({
+                    id: folder.name.replace('backup_', ''),
+                    timestamp: metadata.timestamp,
+                    createdAt: metadata.createdAt,
+                    folders: metadata.folders,
+                    status: metadata.failed?.length > 0 ? 'partial' : 'complete'
+                });
+            }
+        }
+        
+        return backupList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    } catch (error) {
+        console.error('❌ Błąd listowania backupów:', error.message);
+        return [];
+    }
+}
+
+// === AUTOMATYCZNY BACKUP (inicjalizacja) ===
+
+let backupInterval = null;
+
+function startAutomaticBackup() {
+    if (backupInterval) {
+        clearInterval(backupInterval);
+    }
+    
+    console.log(`🔄 Automatyczny backup co ${BACKUP_CONFIG.interval/60000} minut`);
+    
+    // Pierwszy backup po 5 minutach od startu
+    setTimeout(() => {
+        createFullBackup().catch(err => console.error('Błąd pierwszego backupu:', err));
+    }, 5 * 60 * 1000);
+    
+    // Potem co godzinę
+    backupInterval = setInterval(() => {
+        createFullBackup().catch(err => console.error('Błąd automatycznego backupu:', err));
+    }, BACKUP_CONFIG.interval);
+}
+
+function stopAutomaticBackup() {
+    if (backupInterval) {
+        clearInterval(backupInterval);
+        backupInterval = null;
+        console.log('🛑 Automatyczny backup zatrzymany');
+    }
+}
+
+// === ENDPOINTY BACKUP ===
+
+// Wykonaj ręczny backup
+app.post('/api/backup/create', async (req, res) => {
+    try {
+        const result = await createFullBackup();
+        res.json({
+            success: true,
+            backup: {
+                timestamp: result.timestamp,
+                folder: result.folder,
+                foldersBackedUp: result.success,
+                failed: result.failed
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Lista backupów
+app.get('/api/backup/list', async (req, res) => {
+    try {
+        const backups = await listBackups();
+        res.json({
+            success: true,
+            backups: backups,
+            total: backups.length,
+            maxKept: BACKUP_CONFIG.maxBackups
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Pobierz szczegóły backupu
+app.get('/api/backup/:timestamp', async (req, res) => {
+    try {
+        const metadata = await loadFromDropbox(`/backups/backup_${req.params.timestamp}/_metadata.json`, null);
+        
+        if (!metadata) {
+            return res.status(404).json({ error: 'Backup not found' });
+        }
+        
+        res.json({
+            success: true,
+            backup: metadata
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Przywróć z backupu (UWAGA: nadpisuje obecne dane!)
+app.post('/api/backup/restore/:timestamp', async (req, res) => {
+    try {
+        const { confirm } = req.body;
+        
+        if (!confirm || confirm !== 'RESTORE') {
+            return res.status(400).json({ 
+                error: 'Confirmation required',
+                message: 'Send {"confirm": "RESTORE"} to confirm data overwrite'
+            });
+        }
+        
+        await restoreFromBackup(req.params.timestamp);
+        
+        res.json({
+            success: true,
+            message: `Restored from backup: ${req.params.timestamp}`,
+            warning: 'Cache may need refresh - consider restarting server'
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Usuń backup
+app.delete('/api/backup/:timestamp', async (req, res) => {
+    try {
+        const success = await deleteFromDropbox(`/backups/backup_${req.params.timestamp}`);
+        
+        if (success) {
+            res.json({ success: true, message: 'Backup deleted' });
+        } else {
+            res.status(404).json({ error: 'Backup not found or could not be deleted' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Status backupu
+app.get('/api/backup/status', async (req, res) => {
+    try {
+        const backups = await listBackups();
+        const latest = backups[0];
+        
+        res.json({
+            success: true,
+            automaticBackup: backupInterval !== null,
+            intervalMinutes: BACKUP_CONFIG.interval / 60000,
+            maxBackupsKept: BACKUP_CONFIG.maxBackups,
+            totalBackups: backups.length,
+            latestBackup: latest || null,
+            nextBackup: backupInterval ? new Date(Date.now() + BACKUP_CONFIG.interval).toISOString() : null
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Odczytaj plik z Dropbox (tekstowy/JSON)
 async function loadFromDropbox(dropboxPath, defaultValue = null) {
     try {
