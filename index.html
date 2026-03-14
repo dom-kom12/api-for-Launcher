@@ -3,356 +3,418 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nebula - Platforma Gier</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <title>Nebula Admin - Zarządzanie Grami</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-            min-height: 100vh;
-            color: #fff;
-            line-height: 1.6;
-        }
-
-        .app-container {
-            display: flex;
+            background: #0a0a0f;
+            color: #ffffff;
             min-height: 100vh;
         }
-
-        /* Sidebar Navigation */
-        .sidebar {
-            width: 250px;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 20px;
+        
+        .header {
+            background: #12121a;
+            padding: 20px 40px;
+            border-bottom: 2px solid #00d4ff;
             display: flex;
-            flex-direction: column;
-            position: fixed;
-            height: 100vh;
-            z-index: 100;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
         }
-
-        .logo {
+        
+        .header h1 {
+            color: #00d4ff;
             font-size: 28px;
-            font-weight: bold;
-            background: linear-gradient(45deg, #00d4ff, #7b2cbf);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 40px;
-            text-align: center;
         }
 
-        .nav-menu {
-            list-style: none;
-            flex: 1;
-        }
-
-        .nav-item {
-            margin-bottom: 10px;
-        }
-
-        .nav-link {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
-            color: rgba(255, 255, 255, 0.7);
-            text-decoration: none;
-            border-radius: 12px;
-            transition: all 0.3s;
-            cursor: pointer;
-            border: none;
-            background: none;
-            width: 100%;
-            font-size: 16px;
-        }
-
-        .nav-link:hover, .nav-link.active {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-        }
-
-        .nav-link i {
-            font-size: 20px;
-            width: 24px;
-            text-align: center;
-        }
-
-        .user-section {
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-        }
-
-        .user-details {
-            flex: 1;
-        }
-
-        .username {
-            font-weight: 600;
+        .guild-info {
+            color: #6a6a7a;
             font-size: 14px;
+            margin-top: 5px;
         }
 
-        .user-status {
-            font-size: 12px;
-            opacity: 0.6;
-        }
-
-        .logout-btn {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+        .guild-selector {
+            background: #16161f;
+            border: 1px solid #2a2a3a;
             color: #fff;
-            padding: 8px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .logout-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            margin-left: 250px;
-            padding: 30px;
-            overflow-y: auto;
-        }
-
-        .page {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .page.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Auth Page */
-        .auth-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin-left: 0;
-        }
-
-        .auth-box {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            padding: 40px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .auth-title {
-            font-size: 32px;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-
-        .auth-subtitle {
-            text-align: center;
-            opacity: 0.7;
-            margin-bottom: 30px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 8px;
             font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .form-input {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            padding: 12px 16px;
-            border-radius: 10px;
-            font-size: 16px;
+            font-weight: bold;
             transition: all 0.3s;
         }
-
-        .form-input:focus {
-            outline: none;
-            border-color: #00d4ff;
-            background: rgba(255, 255, 255, 0.08);
+        
+        .btn-primary {
+            background: #00d4ff;
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            background: #33ddff;
+        }
+        
+        .btn-success {
+            background: #00ff88;
+            color: #000;
         }
 
-        .btn {
-            width: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .btn-success:disabled {
+            background: #2a3a2a;
+            color: #666;
+            cursor: not-allowed;
+        }
+        
+        .btn-danger {
+            background: #ff3366;
             color: #fff;
-            border: none;
-            padding: 14px;
-            border-radius: 10px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-weight: 600;
         }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        
+        .btn-warning {
+            background: #ffaa00;
+            color: #000;
         }
 
         .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            margin-top: 10px;
+            background: #2a2a3a;
+            color: #fff;
+            border: 1px solid #3a3a4a;
         }
 
-        .auth-switch {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 14px;
-            opacity: 0.8;
+        .btn-secondary:hover {
+            background: #3a3a4a;
         }
 
-        .auth-switch a {
-            color: #00d4ff;
-            cursor: pointer;
-            text-decoration: none;
+        .btn-icon {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
         }
 
-        /* Store Page */
-        .page-header {
-            margin-bottom: 30px;
-        }
-
-        .page-title {
-            font-size: 36px;
-            margin-bottom: 10px;
-        }
-
-        .search-bar {
+        .toolbar {
             display: flex;
             gap: 15px;
             margin-bottom: 30px;
+            flex-wrap: wrap;
+            align-items: center;
         }
-
-        .search-input {
+        
+        .search-box {
             flex: 1;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
+            min-width: 300px;
             padding: 12px 20px;
-            border-radius: 12px;
-            font-size: 16px;
+            background: #16161f;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
         }
-
+        
         .games-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 25px;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
         }
-
+        
         .game-card {
-            background: rgba(255, 255, 255, 0.05);
+            background: #16161f;
+            border: 1px solid #2a2a3a;
             border-radius: 16px;
             overflow: hidden;
-            transition: all 0.3s;
-            cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s, border-color 0.2s;
         }
-
+        
         .game-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            border-color: rgba(255, 255, 255, 0.2);
+            border-color: #00d4ff;
         }
-
-        .game-image {
-            width: 100%;
-            height: 160px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        
+        .game-header {
+            height: 120px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 60px;
+            position: relative;
+            background-size: cover;
+            background-position: center;
         }
-
-        .game-image img {
-            width: 100%;
-            height: 100%;
+        
+        .game-header img {
+            width: 80px;
+            height: 80px;
             object-fit: cover;
+            border-radius: 16px;
+        }
+        
+        .game-pegi {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
         }
 
-        .game-info {
-            padding: 20px;
-        }
-
-        .game-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .game-dev {
-            font-size: 14px;
-            opacity: 0.7;
-            margin-bottom: 10px;
-        }
-
-        .game-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .game-price {
-            font-size: 20px;
+        .game-size {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
             font-weight: bold;
             color: #00d4ff;
         }
-
-        .game-rating {
+        
+        .game-body {
+            padding: 20px;
+        }
+        
+        .game-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .game-dev {
+            color: #a0a0b0;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        
+        .game-meta {
             display: flex;
-            align-items: center;
-            gap: 5px;
-            color: #ffd700;
+            gap: 15px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            color: #6a6a7a;
+        }
+        
+        .game-desc {
+            font-size: 13px;
+            color: #a0a0b0;
+            line-height: 1.5;
+            margin-bottom: 15px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
-        /* Game Detail Modal */
+        /* Screenshoty - nowy wygląd */
+        .screenshots-preview {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .screenshot-thumb {
+            aspect-ratio: 16/9;
+            background: #0a0a0f;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            position: relative;
+            border: 1px solid #2a2a3a;
+            transition: all 0.3s ease;
+        }
+
+        .screenshot-thumb:hover {
+            transform: scale(1.05);
+            border-color: #00d4ff;
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+        }
+
+        .screenshot-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: opacity 0.3s;
+        }
+
+        .screenshot-thumb:hover img {
+            opacity: 0.8;
+        }
+
+        .screenshot-thumb .more-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 212, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .screenshot-count-badge {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #000;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 3000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(0, 212, 255, 0.3);
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            color: #fff;
+            font-size: 40px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        .lightbox-close:hover {
+            opacity: 1;
+        }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #fff;
+            font-size: 30px;
+            padding: 15px 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .lightbox-nav:hover {
+            background: rgba(0, 212, 255, 0.3);
+        }
+
+        .lightbox-prev { left: 20px; }
+        .lightbox-next { right: 20px; }
+
+        .game-requirements {
+            background: #0a0a0f;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+
+        .game-requirements summary {
+            cursor: pointer;
+            color: #00d4ff;
+            font-weight: bold;
+        }
+
+        .req-section {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #2a2a3a;
+        }
+
+        .req-section h4 {
+            color: #ffaa00;
+            margin-bottom: 5px;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .req-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+            color: #a0a0b0;
+        }
+        
+        .game-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .game-actions .btn {
+            flex: 1;
+            padding: 10px;
+            font-size: 13px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        
+        .badge-free {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .badge-paid {
+            background: #ffaa00;
+            color: #000;
+        }
+        
         .modal-overlay {
             display: none;
             position: fixed;
@@ -360,1949 +422,1394 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(5px);
+            background: rgba(0,0,0,0.8);
             z-index: 1000;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            overflow-y: auto;
         }
-
-        .modal-overlay.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            border-radius: 20px;
+        
+        .modal {
+            background: #16161f;
+            border: 1px solid #2a2a3a;
+            border-radius: 16px;
+            width: 90%;
             max-width: 900px;
-            width: 100%;
             max-height: 90vh;
             overflow-y: auto;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 20px 0;
         }
-
+        
         .modal-header {
-            position: relative;
-            height: 300px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px;
+            border-bottom: 1px solid #2a2a3a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: #16161f;
+            z-index: 10;
         }
-
-        .modal-header img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+        
+        .modal-header h2 {
+            color: #00d4ff;
         }
-
+        
         .modal-close {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.5);
+            background: none;
             border: none;
             color: #fff;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
+            font-size: 28px;
             cursor: pointer;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
-
+        
         .modal-body {
-            padding: 30px;
+            padding: 25px;
         }
 
-        .modal-title {
-            font-size: 32px;
-            margin-bottom: 10px;
+        .section-title {
+            color: #00d4ff;
+            font-size: 14px;
+            margin: 20px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2a2a3a;
+            padding-bottom: 5px;
         }
-
-        .modal-meta {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
+        
+        .form-group {
+            margin-bottom: 15px;
         }
-
-        .meta-tag {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 5px 15px;
-            border-radius: 20px;
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #a0a0b0;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            background: #0a0a0f;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            color: #fff;
             font-size: 14px;
         }
-
-        .modal-description {
-            margin-bottom: 25px;
-            line-height: 1.8;
-            opacity: 0.9;
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #00d4ff;
         }
-
-        .modal-actions {
-            display: flex;
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 15px;
-            margin-bottom: 30px;
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
         }
 
-        .btn-success {
-            background: linear-gradient(135deg, #00ff88 0%, #00d4ff 100%);
+        .form-row-4 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 15px;
         }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #ff4444 0%, #ff6b6b 100%);
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #6a6a7a;
         }
-
-        /* Comments Section in Modal */
-        .comments-section {
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .comment-form {
-            margin-bottom: 25px;
-        }
-
-        .comment-textarea {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            padding: 15px;
-            border-radius: 12px;
-            resize: vertical;
-            min-height: 80px;
+        
+        .empty-state h3 {
+            font-size: 24px;
             margin-bottom: 10px;
         }
+        
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: bold;
+            transform: translateX(400px);
+            transition: transform 0.3s;
+            z-index: 2000;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+        }
+        
+        .toast.success {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .toast.error {
+            background: #ff3366;
+        }
 
-        .comment {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 15px;
-            border-radius: 12px;
+        .toast.info {
+            background: #00d4ff;
+            color: #000;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #00d4ff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Ikona - wybór między emoji a obrazkiem */
+        .icon-selector {
+            display: flex;
+            gap: 20px;
             margin-bottom: 15px;
         }
 
-        .comment-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            align-items: center;
-        }
-
-        .comment-author {
-            font-weight: 600;
-            color: #00d4ff;
-        }
-
-        .comment-date {
-            font-size: 12px;
-            opacity: 0.6;
-        }
-
-        .comment-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .comment-delete-btn {
-            background: rgba(255, 68, 68, 0.2);
-            border: none;
-            color: #ff4444;
-            padding: 4px 8px;
-            border-radius: 6px;
+        .icon-option {
+            flex: 1;
+            padding: 15px;
+            background: #0a0a0f;
+            border: 2px solid #2a2a3a;
+            border-radius: 12px;
             cursor: pointer;
-            font-size: 12px;
-        }
-
-        .comment-delete-btn:hover {
-            background: rgba(255, 68, 68, 0.4);
-        }
-
-        /* Library Page */
-        .library-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 25px;
-        }
-
-        .library-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 20px;
-            display: flex;
-            gap: 15px;
+            text-align: center;
             transition: all 0.3s;
-            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .library-card:hover {
-            background: rgba(255, 255, 255, 0.08);
+        .icon-option:hover {
+            border-color: #00d4ff;
         }
 
-        .library-icon {
+        .icon-option.active {
+            border-color: #00d4ff;
+            background: #00d4ff10;
+        }
+
+        .icon-preview {
             width: 80px;
             height: 80px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 10px auto;
+            background: #16161f;
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 40px;
-            flex-shrink: 0;
-        }
-
-        .library-info {
-            flex: 1;
-        }
-
-        .library-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .library-meta {
-            font-size: 13px;
-            opacity: 0.7;
-            margin-bottom: 10px;
-        }
-
-        .library-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn-small {
-            padding: 6px 12px;
-            font-size: 13px;
-            width: auto;
-        }
-
-        /* Friends Page */
-        .friends-layout {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 30px;
-        }
-
-        .friends-list {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 20px;
-        }
-
-        .friend-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 15px;
-            border-radius: 12px;
-            transition: all 0.3s;
-            cursor: pointer;
-        }
-
-        .friend-item:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .friend-avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-
-        .friend-info {
-            flex: 1;
-        }
-
-        .friend-name {
-            font-weight: 600;
-            margin-bottom: 3px;
-        }
-
-        .friend-status {
-            font-size: 13px;
-            opacity: 0.7;
-        }
-
-        .status-online {
-            color: #00ff88;
-        }
-
-        .status-offline {
-            color: #ff4444;
-        }
-
-        .friend-actions {
-            display: flex;
-            gap: 5px;
-        }
-
-        .friend-remove-btn {
-            background: rgba(255, 68, 68, 0.2);
-            border: none;
-            color: #ff4444;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .friend-remove-btn:hover {
-            background: rgba(255, 68, 68, 0.4);
-        }
-
-        .add-friend-section {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 20px;
-        }
-
-        .pending-invites {
-            margin-top: 20px;
-        }
-
-        .invite-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-            margin-bottom: 10px;
-        }
-
-        .invite-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .btn-accept {
-            background: #00ff88;
-            color: #000;
-        }
-
-        .btn-decline {
-            background: #ff4444;
-            color: #fff;
-        }
-
-        /* Chat Modal */
-        .chat-modal {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 350px;
-            height: 500px;
-            background: rgba(30, 30, 46, 0.95);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            display: none;
-            flex-direction: column;
-            z-index: 999;
-            backdrop-filter: blur(10px);
-        }
-
-        .chat-modal.active {
-            display: flex;
-        }
-
-        .chat-header {
-            padding: 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 15px;
-        }
-
-        .message {
-            margin-bottom: 10px;
-            max-width: 80%;
-        }
-
-        .message.sent {
-            margin-left: auto;
-            text-align: right;
-        }
-
-        .message-bubble {
-            display: inline-block;
-            padding: 10px 15px;
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.1);
-            word-wrap: break-word;
-        }
-
-        .message.sent .message-bubble {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .chat-input-area {
-            padding: 15px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            gap: 10px;
-        }
-
-        .chat-input {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            padding: 10px 15px;
-            border-radius: 20px;
-        }
-
-        .typing-indicator {
-            font-size: 12px;
-            opacity: 0.6;
-            padding: 5px 15px;
-            font-style: italic;
-        }
-
-        /* Rating Stars */
-        .star-rating {
-            display: flex;
-            gap: 5px;
-            font-size: 24px;
-            margin-bottom: 15px;
-        }
-
-        .star {
-            color: #444;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .star.filled {
-            color: #ffd700;
-        }
-
-        .star:hover {
-            transform: scale(1.2);
-        }
-
-        /* Screenshots Gallery */
-        .screenshots-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 10px;
-            margin: 20px 0;
-        }
-
-        .screenshot-thumb {
-            aspect-ratio: 16/9;
-            border-radius: 8px;
             overflow: hidden;
-            cursor: pointer;
-            background: rgba(0, 0, 0, 0.3);
         }
 
-        .screenshot-thumb img {
+        .icon-preview img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transition: transform 0.3s;
         }
 
-        .screenshot-thumb:hover img {
+        /* Drag & Drop dla screenshotów */
+        .drop-zone {
+            border: 3px dashed #2a2a3a;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #0a0a0f;
+            transition: all 0.3s;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #00d4ff;
+            background: #00d4ff05;
+        }
+
+        .drop-zone-text {
+            color: #6a6a7a;
+            font-size: 16px;
+        }
+
+        .drop-zone-text strong {
+            color: #00d4ff;
+        }
+
+        .screenshots-section {
+            background: #0a0a0f;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        /* W modalu - lepsza lista screenshotów */
+        .screenshots-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .screenshot-item {
+            position: relative;
+            aspect-ratio: 16/9;
+            background: #0a0a0f;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #2a2a3a;
+            transition: all 0.3s ease;
+        }
+
+        .screenshot-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .screenshot-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .screenshot-item .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #ff3366;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.2s;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .screenshot-item:hover .remove-btn {
+            opacity: 1;
+        }
+
+        .screenshot-item .remove-btn:hover {
+            background: #ff1144;
             transform: scale(1.1);
         }
 
-        /* Rating Stats */
-        .rating-stats {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 20px;
+        .screenshot-uploading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
-        .rating-average {
-            font-size: 24px;
+        .screenshot-uploading .progress-text {
+            color: #00d4ff;
+            font-size: 12px;
             font-weight: bold;
-            color: #ffd700;
-            margin-bottom: 10px;
         }
 
-        .rating-bar {
+        .add-screenshot-btn {
+            aspect-ratio: 16/9;
+            background: transparent;
+            border: 2px dashed #2a2a3a;
+            border-radius: 8px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 5px;
-            font-size: 13px;
+            justify-content: center;
+            cursor: pointer;
+            color: #6a6a7a;
+            font-size: 24px;
+            transition: all 0.3s;
+            min-height: 67px;
         }
 
-        .rating-bar-fill {
-            flex: 1;
-            height: 8px;
-            background: rgba(255, 255, 255, 0.1);
+        .add-screenshot-btn:hover {
+            border-color: #00d4ff;
+            color: #00d4ff;
+            background: rgba(0, 212, 255, 0.05);
+        }
+
+        .screenshot-input {
+            display: none;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .compat-check {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .compat-check h3 {
+            color: #00d4ff;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .compat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a3a;
+        }
+
+        .compat-item:last-child {
+            border-bottom: none;
+        }
+
+        .compat-status {
+            font-size: 12px;
+            padding: 4px 8px;
             border-radius: 4px;
+        }
+
+        .compat-ok {
+            background: #00ff8830;
+            color: #00ff88;
+        }
+
+        .compat-fail {
+            background: #ff336630;
+            color: #ff3366;
+        }
+
+        .compat-unknown {
+            background: #ffaa0030;
+            color: #ffaa00;
+        }
+
+        /* Placeholder dla błędów */
+        .screenshot-error {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #1a1a2e;
+            color: #6a6a7a;
+            font-size: 24px;
+        }
+
+        /* Progress bar dla uploadu */
+        .upload-progress {
+            width: 100%;
+            height: 4px;
+            background: #2a2a3a;
+            border-radius: 2px;
+            margin-top: 10px;
             overflow: hidden;
         }
 
-        .rating-bar-fill-inner {
+        .upload-progress-bar {
             height: 100%;
-            background: #ffd700;
-            border-radius: 4px;
-        }
-
-        /* Notifications */
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 212, 255, 0.9);
-            color: #000;
-            padding: 15px 25px;
-            border-radius: 12px;
-            z-index: 10000;
-            animation: slideIn 0.3s ease;
-            font-weight: 600;
-        }
-
-        .notification.error {
-            background: rgba(255, 68, 68, 0.9);
-            color: #fff;
-        }
-
-        @keyframes slideIn {
-            from { transform: translateX(400px); }
-            to { transform: translateX(0); }
-        }
-
-        /* Server Status Indicator */
-        .server-status {
-            position: fixed;
-            top: 20px;
-            left: 270px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 15px;
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 20px;
-            font-size: 12px;
-            z-index: 99;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-
-        .status-dot.online {
-            background: #00ff88;
-            box-shadow: 0 0 10px #00ff88;
-        }
-
-        .status-dot.offline {
-            background: #ff4444;
-        }
-
-        .status-dot.connecting {
-            background: #ffd700;
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                position: relative;
-                height: auto;
-            }
-
-            .main-content {
-                margin-left: 0;
-            }
-
-            .app-container {
-                flex-direction: column;
-            }
-
-            .friends-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .server-status {
-                left: 20px;
-                top: auto;
-                bottom: 20px;
-            }
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        /* Loading Spinner */
-        .spinner {
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid #00d4ff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 60px;
-            opacity: 0.6;
-        }
-
-        .badge {
-            background: #ff4444;
-            color: #fff;
-            font-size: 11px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            margin-left: 5px;
+            background: #00d4ff;
+            width: 0%;
+            transition: width 0.3s;
         }
     </style>
 </head>
 <body>
-    <div id="app">
-        <!-- Server Status -->
-        <div class="server-status" id="serverStatus" style="display: none;">
-            <div class="status-dot connecting" id="statusDot"></div>
-            <span id="statusText">Łączenie...</span>
+    <div class="header">
+        <div>
+            <h1>🌌 NEBULA ADMIN</h1>
+            <div class="guild-info" id="guildInfo">Ładowanie...</div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <select class="guild-selector" id="guildSelector" onchange="changeGuild()">
+                <option value="">Wybierz serwer...</option>
+            </select>
+            <button class="btn btn-secondary" onclick="checkCompatibility()">🖥️ Sprawdź PC</button>
+            <button class="btn btn-primary" onclick="openModal()">➕ Dodaj Grę</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="toolbar">
+            <input type="text" class="search-box" id="searchInput" placeholder="🔍 Szukaj gry..." onkeyup="filterGames()">
+            <button class="btn btn-secondary" onclick="refreshData()">🔄 Odśwież</button>
         </div>
 
-        <!-- Auth View -->
-        <div id="authView" class="auth-container">
-            <div class="auth-box">
-                <h1 class="auth-title">Nebula</h1>
-                <p class="auth-subtitle">Platforma Gier</p>
-                
-                <div id="loginForm">
-                    <div class="form-group">
-                        <label class="form-label">Nazwa użytkownika</label>
-                        <input type="text" class="form-input" id="loginUsername" placeholder="Wpisz nazwę użytkownika">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Hasło</label>
-                        <input type="password" class="form-input" id="loginPassword" placeholder="Wpisz hasło">
-                    </div>
-                    <button class="btn" id="loginBtn">Zaloguj się</button>
-                    <button class="btn btn-secondary" id="showRegisterBtn">Utwórz konto</button>
-                </div>
-
-                <div id="registerForm" class="hidden">
-                    <div class="form-group">
-                        <label class="form-label">Nazwa użytkownika</label>
-                        <input type="text" class="form-input" id="regUsername" placeholder="Wybierz nazwę użytkownika">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Email</label>
-                        <input type="email" class="form-input" id="regEmail" placeholder="Wpisz email">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Hasło</label>
-                        <input type="password" class="form-input" id="regPassword" placeholder="Wybierz hasło">
-                    </div>
-                    <button class="btn" id="registerBtn">Zarejestruj się</button>
-                    <button class="btn btn-secondary" id="showLoginBtn">Masz już konto? Zaloguj się</button>
-                </div>
-            </div>
+        <!-- Panel kompatybilności -->
+        <div class="compat-check" id="compatPanel" style="display: none;">
+            <h3>🖥️ Twoja Konfiguracja</h3>
+            <div id="compatList"></div>
         </div>
-
-        <!-- Main App View -->
-        <div id="mainView" class="app-container hidden">
-            <!-- Sidebar -->
-            <nav class="sidebar">
-                <div class="logo">NEBULA</div>
-                
-                <ul class="nav-menu">
-                    <li class="nav-item">
-                        <button class="nav-link active" data-page="store">
-                            <i>🛒</i>
-                            <span>Sklep</span>
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-page="library">
-                            <i>📚</i>
-                            <span>Biblioteka</span>
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-page="friends">
-                            <i>👥</i>
-                            <span>Znajomi</span>
-                            <span id="friendsBadge" class="badge hidden">0</span>
-                        </button>
-                    </li>
-                </ul>
-
-                <div class="user-section">
-                    <div class="user-info">
-                        <div class="user-avatar" id="userAvatar">U</div>
-                        <div class="user-details">
-                            <div class="username" id="sidebarUsername">Użytkownik</div>
-                            <div class="user-status" id="userStatusText">Online</div>
-                        </div>
-                    </div>
-                    <button class="logout-btn" id="logoutBtn">Wyloguj się</button>
-                </div>
-            </nav>
-
-            <!-- Main Content -->
-            <main class="main-content">
-                <!-- Store Page -->
-                <div id="storePage" class="page active">
-                    <div class="page-header">
-                        <h1 class="page-title">Sklep</h1>
-                    </div>
-                    
-                    <div class="search-bar">
-                        <input type="text" class="search-input" id="searchInput" placeholder="Szukaj gier...">
-                    </div>
-
-                    <div id="gamesContainer" class="games-grid">
-                        <div class="spinner"></div>
-                    </div>
-                </div>
-
-                <!-- Library Page -->
-                <div id="libraryPage" class="page">
-                    <div class="page-header">
-                        <h1 class="page-title">Moja Biblioteka</h1>
-                    </div>
-                    
-                    <div id="libraryContainer" class="library-grid">
-                        <div class="spinner"></div>
-                    </div>
-                </div>
-
-                <!-- Friends Page -->
-                <div id="friendsPage" class="page">
-                    <div class="page-header">
-                        <h1 class="page-title">Znajomi</h1>
-                    </div>
-                    
-                    <div class="friends-layout">
-                        <div class="friends-list" id="friendsList">
-                            <div class="spinner"></div>
-                        </div>
-
-                        <div class="add-friend-section">
-                            <h3 style="margin-bottom: 15px;">Dodaj znajomego</h3>
-                            <div class="form-group">
-                                <input type="text" class="form-input" id="friendUsername" placeholder="Nazwa użytkownika">
-                            </div>
-                            <button class="btn" id="addFriendBtn">Wyślij zaproszenie</button>
-
-                            <div class="pending-invites" id="pendingInvites"></div>
-                        </div>
-                    </div>
-                </div>
-            </main>
-        </div>
-
-        <!-- Game Detail Modal -->
-        <div id="gameModal" class="modal-overlay">
-            <div class="modal-content">
-                <div class="modal-header" id="modalHeader">
-                    <button class="modal-close" id="closeModalBtn">&times;</button>
-                </div>
-                <div class="modal-body" id="modalBody"></div>
-            </div>
-        </div>
-
-        <!-- Chat Modal -->
-        <div id="chatModal" class="chat-modal">
-            <div class="chat-header">
-                <span id="chatWith">Rozmowa</span>
-                <button class="modal-close" id="closeChatBtn" style="position: static; width: 30px; height: 30px;">&times;</button>
-            </div>
-            <div class="chat-messages" id="chatMessages"></div>
-            <div class="typing-indicator hidden" id="typingIndicator"></div>
-            <div class="chat-input-area">
-                <input type="text" class="chat-input" id="chatInput" placeholder="Napisz wiadomość...">
-                <button class="btn btn-small" id="sendMsgBtn">➤</button>
+        
+        <div class="games-grid" id="gamesGrid">
+            <div class="empty-state" style="grid-column: 1/-1;">
+                <div class="loading"></div>
+                <p>Ładowanie gier...</p>
             </div>
         </div>
     </div>
+    
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modalTitle">Dodaj Nową Grę</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="gameForm" onsubmit="saveGame(event)">
+                    <input type="hidden" id="gameId">
+                    
+                    <div class="section-title">Podstawowe Informacje</div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Nazwa gry *</label>
+                            <input type="text" id="inputName" placeholder="Minecraft Launcher" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Developer</label>
+                            <input type="text" id="inputDev" placeholder="Mojang">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label>Cena (zł)</label>
+                            <input type="number" id="inputPrice" step="0.01" value="0" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>PEGI</label>
+                            <select id="inputPegi">
+                                <option value="3">3</option>
+                                <option value="7">7</option>
+                                <option value="12" selected>12</option>
+                                <option value="16">16</option>
+                                <option value="18">18</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Rozmiar (GB)</label>
+                            <input type="number" id="inputSize" step="0.1" min="0" placeholder="np. 15.5">
+                        </div>
+                        <div class="form-group">
+                            <label>Wersja</label>
+                            <input type="text" id="inputVersion" placeholder="1.0">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Gatunek</label>
+                            <input type="text" id="inputGenre" placeholder="Akcja, RPG, Strategia...">
+                        </div>
+                        <div class="form-group">
+                            <label>Data premiery</label>
+                            <input type="date" id="inputReleaseDate">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Wydawca</label>
+                            <input type="text" id="inputPublisher" placeholder="Nazwa wydawcy">
+                        </div>
+                        <div class="form-group">
+                            <label>Język</label>
+                            <input type="text" id="inputLanguage" placeholder="Polski, Angielski...">
+                        </div>
+                    </div>
+
+                    <!-- Wybór ikony -->
+                    <div class="section-title">🎨 Ikona Gry</div>
+                    
+                    <div class="icon-selector">
+                        <div class="icon-option active" onclick="selectIconType('emoji')" id="emojiOption">
+                            <div class="icon-preview" id="emojiPreview">🎮</div>
+                            <div>Emoji</div>
+                            <input type="text" id="inputIcon" placeholder="🎮" maxlength="2" style="margin-top: 10px; text-align: center;" oninput="updateEmojiPreview(this.value)">
+                        </div>
+                        <div class="icon-option" onclick="selectIconType('image')" id="imageOption">
+                            <div class="icon-preview" id="imagePreview">
+                                <span style="font-size: 30px;">📷</span>
+                            </div>
+                            <div>Obrazek PNG/JPG</div>
+                            <input type="file" id="iconFileInput" class="file-input" accept="image/png,image/jpeg,image/jpg" onchange="uploadIcon(this)">
+                            <button type="button" class="btn btn-secondary" style="margin-top: 10px; width: 100%;" onclick="document.getElementById('iconFileInput').click()">Wybierz plik</button>
+                            <input type="hidden" id="inputIconUrl">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Kolor tła (hex)</label>
+                            <input type="color" id="inputColor" value="#00d4ff">
+                        </div>
+                        <div class="form-group">
+                            <label>URL Pobierania</label>
+                            <input type="url" id="inputUrl" placeholder="https://...">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Opis</label>
+                        <textarea id="inputDesc" rows="3" placeholder="Krótki opis gry..."></textarea>
+                    </div>
+
+                    <!-- Screenshoty z Drag & Drop -->
+                    <div class="section-title">📸 Screenshoty (Drag & Drop)</div>
+                    
+                    <div class="drop-zone" id="dropZone" onclick="document.getElementById('screenshotFileInput').click()">
+                        <div class="drop-zone-text">
+                            <strong>Przeciągnij obrazki tutaj</strong><br>
+                            lub kliknij aby wybrać pliki<br>
+                            <small style="color: #6a6a7a;">PNG, JPG, GIF (max 10MB)</small>
+                        </div>
+                        <input type="file" id="screenshotFileInput" class="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
+                    </div>
+
+                    <div class="screenshots-section">
+                        <div class="screenshots-list" id="screenshotsList">
+                            <!-- Tutaj będą screenshoty -->
+                        </div>
+                    </div>
+
+                    <div class="section-title">Wymagania Minimalne</div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>System OS</label>
+                            <input type="text" id="reqMinOs" placeholder="Windows 10 64-bit">
+                        </div>
+                        <div class="form-group">
+                            <label>Procesor</label>
+                            <input type="text" id="reqMinCpu" placeholder="Intel i3-4170">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label>RAM</label>
+                            <input type="text" id="reqMinRam" placeholder="8 GB">
+                        </div>
+                        <div class="form-group">
+                            <label>Karta graficzna</label>
+                            <input type="text" id="reqMinGpu" placeholder="GTX 1050">
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Dysk</label>
+                            <input type="text" id="reqMinStorage" placeholder="20 GB">
+                        </div>
+                    </div>
+
+                    <div class="section-title">Wymagania Rekomendowane</div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>System OS</label>
+                            <input type="text" id="reqRecOs" placeholder="Windows 11 64-bit">
+                        </div>
+                        <div class="form-group">
+                            <label>Procesor</label>
+                            <input type="text" id="reqRecCpu" placeholder="Intel i5-10400">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label>RAM</label>
+                            <input type="text" id="reqRecRam" placeholder="16 GB">
+                        </div>
+                        <div class="form-group">
+                            <label>Karta graficzna</label>
+                            <input type="text" id="reqRecGpu" placeholder="RTX 3060">
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Dysk</label>
+                            <input type="text" id="reqRecStorage" placeholder="20 GB SSD">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px; margin-top: 20px;">
+                        💾 Zapisz Grę
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+        <span class="lightbox-close">&times;</span>
+        <button class="lightbox-nav lightbox-prev" onclick="changeImage(-1, event)">‹</button>
+        <img id="lightboxImg" src="" alt="Screenshot">
+        <button class="lightbox-nav lightbox-next" onclick="changeImage(1, event)">›</button>
+    </div>
+    
+    <div class="toast" id="toast"></div>
 
     <script>
-        // Configuration
-        const API_URL = 'https://api-for-launcher.onrender.com';
-        const DEFAULT_GUILD_ID = '1477574526933012541';
-        let currentUser = null;
-        let currentToken = null;
+        const API_URL = "https://api-for-launcher.onrender.com";
+        
         let games = [];
-        let library = [];
-        let friends = [];
-        let currentChatFriend = null;
-        let currentGameId = null;
-        let socket = null;
-        let dropboxStatus = { connected: false };
-        let typingTimeout = null;
+        let editingId = null;
+        let userPC = null;
+        let currentGuildId = '';
+        let currentScreenshots = [];
+        let currentIconType = 'emoji';
+        let currentLightboxIndex = 0;
+        let currentLightboxImages = [];
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            checkServerStatus();
-            checkAuth();
-            setupEventListeners();
-        });
+        // Inicjalizacja
+        init();
 
-        async function checkServerStatus() {
-            const statusEl = document.getElementById('serverStatus');
-            const dotEl = document.getElementById('statusDot');
-            const textEl = document.getElementById('statusText');
+        async function init() {
+            await loadGuilds();
+            setupDragAndDrop();
+            await loadGames();
+        }
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
             
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.add('dragover');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.remove('dragover');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', handleDrop, false);
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        async function handleFiles(files) {
+            if (!currentGuildId) {
+                showToast('Najpierw wybierz serwer!', 'error');
+                return;
+            }
+
+            const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+            
+            if (imageFiles.length === 0) {
+                showToast('Wybierz pliki obrazów', 'error');
+                return;
+            }
+
+            for (const file of imageFiles) {
+                await uploadScreenshot(file);
+            }
+        }
+
+        async function uploadScreenshot(file) {
+            const formData = new FormData();
+            formData.append('screenshot', file);
+            
+            const tempId = 'temp_' + Date.now();
+            const container = document.getElementById('screenshotsList');
+            const item = document.createElement('div');
+            item.className = 'screenshot-item';
+            item.id = tempId;
+            item.innerHTML = `
+                <div class="screenshot-uploading">
+                    <div class="loading"></div>
+                    <div class="progress-text">0%</div>
+                </div>
+            `;
+            container.appendChild(item);
+
             try {
-                const response = await fetch(API_URL + '/health');
+                const response = await fetch(`${API_URL}/api/upload/screenshot?guildId=${currentGuildId}${editingId ? '&gameId=' + editingId : ''}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Upload failed');
+
                 const data = await response.json();
                 
-                dropboxStatus = data.dropbox;
+                currentScreenshots.push(data.url);
+                renderScreenshots();
+                showToast('Screenshot dodany!', 'success');
+
+            } catch (error) {
+                console.error('Błąd uploadu:', error);
+                document.getElementById(tempId)?.remove();
+                showToast('Błąd uploadu: ' + error.message, 'error');
+            }
+        }
+
+        async function uploadIcon(input) {
+            if (!input.files || input.files.length === 0) return;
+            
+            const file = input.files[0];
+            const formData = new FormData();
+            formData.append('icon', file);
+
+            const preview = document.getElementById('imagePreview');
+            preview.innerHTML = '<div class="loading"></div>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/upload/icon?guildId=${currentGuildId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Upload failed');
+
+                const data = await response.json();
                 
-                if (data.status === 'OK') {
-                    dotEl.className = 'status-dot online';
-                    textEl.textContent = 'Online' + (data.dropbox.connected ? ' (Dropbox OK)' : ' (Dropbox ?)');
-                    statusEl.style.display = 'flex';
-                    return true;
+                document.getElementById('inputIconUrl').value = data.url;
+                preview.innerHTML = `<img src="${data.url}" alt="Icon">`;
+                showToast('Ikona dodana!', 'success');
+
+            } catch (error) {
+                console.error('Błąd uploadu ikony:', error);
+                preview.innerHTML = '<span style="font-size: 30px;">❌</span>';
+                showToast('Błąd uploadu ikony: ' + error.message, 'error');
+            }
+        }
+
+        function selectIconType(type) {
+            currentIconType = type;
+            document.getElementById('emojiOption').classList.toggle('active', type === 'emoji');
+            document.getElementById('imageOption').classList.toggle('active', type === 'image');
+        }
+
+        function updateEmojiPreview(value) {
+            document.getElementById('emojiPreview').textContent = value || '🎮';
+        }
+
+        async function loadGuilds() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                
+                const selector = document.getElementById('guildSelector');
+                selector.innerHTML = '<option value="">Wybierz serwer...</option>';
+                
+                if (data.guildsReady && data.guildsReady.length > 0) {
+                    data.guildsReady.forEach(guild => {
+                        const option = document.createElement('option');
+                        option.value = guild.id;
+                        option.textContent = `${guild.name} (${guild.memberCount} osób)`;
+                        selector.appendChild(option);
+                    });
+                    
+                    if (data.guildsReady.length > 0) {
+                        currentGuildId = data.guildsReady[0].id;
+                        selector.value = currentGuildId;
+                    }
                 }
-            } catch (e) {
-                dotEl.className = 'status-dot offline';
-                textEl.textContent = 'Offline';
-                statusEl.style.display = 'flex';
+            } catch (error) {
+                console.error('Błąd ładowania guildów:', error);
+            }
+        }
+
+        function changeGuild() {
+            const selector = document.getElementById('guildSelector');
+            currentGuildId = selector.value;
+            loadGames();
+        }
+
+        async function loadGames() {
+            if (!currentGuildId) {
+                document.getElementById('gamesGrid').innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <h3>📂 Wybierz serwer</h3>
+                        <p>Wybierz serwer Discord z listy powyżej, aby zarządzać grami</p>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                document.getElementById('guildInfo').innerHTML = `<span class="loading"></span> Ładowanie...`;
+                
+                const response = await fetch(`${API_URL}/games?guildId=${currentGuildId}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                games = Array.isArray(data) ? data : [];
+                
+                const guildName = document.getElementById('guildSelector').selectedOptions[0]?.text.split('(')[0] || 'Unknown';
+                document.getElementById('guildInfo').innerHTML = `${guildName.trim()} • ${games.length} gier`;
+                renderGames();
+                
+            } catch (error) {
+                console.error('Błąd ładowania:', error);
+                showToast('Błąd ładowania gier: ' + error.message, 'error');
+                document.getElementById('gamesGrid').innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <h3>⚠️ Błąd połączenia</h3>
+                        <p>${error.message}</p>
+                        <button class="btn btn-primary" onclick="loadGames()" style="margin-top: 20px;">
+                            🔄 Spróbuj ponownie
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function refreshData() {
+            showToast('Odświeżanie...', 'info');
+            loadGames();
+        }
+
+        function checkCompatibility() {
+            const saved = localStorage.getItem('userPCConfig');
+            if (saved) {
+                userPC = JSON.parse(saved);
+                showCompatPanel();
+                renderGames();
+                return;
+            }
+
+            const os = prompt('Twój system operacyjny:', 'Windows 10');
+            if (!os) return;
+            
+            const ram = prompt('Ilość RAM (GB):', '16');
+            if (!ram) return;
+            
+            const cpu = prompt('Procesor:', 'Intel i5');
+            if (!cpu) return;
+            
+            const gpu = prompt('Karta graficzna:', 'GTX 1060');
+            if (!gpu) return;
+
+            userPC = {
+                os: os.toLowerCase(),
+                ram: parseInt(ram) || 0,
+                cpu: cpu.toLowerCase(),
+                gpu: gpu.toLowerCase(),
+                raw: { os, ram: ram + ' GB', cpu, gpu }
+            };
+
+            localStorage.setItem('userPCConfig', JSON.stringify(userPC));
+            showCompatPanel();
+            renderGames();
+        }
+
+        function showCompatPanel() {
+            if (!userPC) return;
+            
+            document.getElementById('compatPanel').style.display = 'block';
+            document.getElementById('compatList').innerHTML = `
+                <div class="compat-item">
+                    <span>🖥️ System</span>
+                    <span class="compat-status compat-ok">${userPC.raw.os}</span>
+                </div>
+                <div class="compat-item">
+                    <span>🧠 RAM</span>
+                    <span class="compat-status compat-ok">${userPC.raw.ram}</span>
+                </div>
+                <div class="compat-item">
+                    <span>⚡ Procesor</span>
+                    <span class="compat-status compat-ok">${userPC.raw.cpu}</span>
+                </div>
+                <div class="compat-item">
+                    <span>🎮 GPU</span>
+                    <span class="compat-status compat-ok">${userPC.raw.gpu}</span>
+                </div>
+            `;
+        }
+
+        function checkGameCompatibility(game) {
+            if (!userPC || !game.requirements || !game.requirements.min) {
+                return { compatible: true, reason: 'Brak danych' };
+            }
+
+            const min = game.requirements.min;
+            const ramMatch = min.ram ? parseInt(min.ram) <= userPC.ram : true;
+            const osMatch = min.os ? 
+                userPC.os.includes(min.os.toLowerCase().split(' ')[0]) || 
+                min.os.toLowerCase().includes(userPC.os.split(' ')[0]) : true;
+
+            if (!ramMatch) return { compatible: false, reason: `Za mało RAM (wymagane: ${min.ram})` };
+            if (!osMatch) return { compatible: false, reason: `Niekompatybilny system (wymagany: ${min.os})` };
+            
+            return { compatible: true, reason: 'OK' };
+        }
+
+        function removeScreenshot(index) {
+            currentScreenshots.splice(index, 1);
+            renderScreenshots();
+        }
+
+        function renderScreenshots() {
+            const container = document.getElementById('screenshotsList');
+            container.innerHTML = '';
+
+            currentScreenshots.forEach((url, index) => {
+                const item = document.createElement('div');
+                item.className = 'screenshot-item';
+                item.innerHTML = `
+                    <img src="${url}" alt="Screenshot ${index + 1}" 
+                         onerror="this.parentElement.innerHTML='<div class=\'screenshot-error\'>❌</div>'"
+                         loading="lazy">
+                    <button type="button" class="remove-btn" onclick="removeScreenshot(${index})" title="Usuń">×</button>
+                `;
+                container.appendChild(item);
+            });
+
+            const addBtn = document.createElement('div');
+            addBtn.className = 'add-screenshot-btn';
+            addBtn.innerHTML = '+';
+            addBtn.title = 'Dodaj screenshot';
+            addBtn.onclick = () => document.getElementById('screenshotFileInput').click();
+            container.appendChild(addBtn);
+        }
+
+        async function saveGameToServer(gameData) {
+            try {
+                const url = editingId 
+                    ? `${API_URL}/api/games/${editingId}?guildId=${currentGuildId}` 
+                    : `${API_URL}/api/games?guildId=${currentGuildId}`;
+                
+                const method = editingId ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(gameData)
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const result = await response.json();
+                
+                showToast(editingId ? 'Zaktualizowano grę!' : 'Dodano nową grę!', 'success');
+                await loadGames();
+                return true;
+                
+            } catch (error) {
+                console.error('Błąd zapisywania:', error);
+                showToast('Błąd: ' + error.message, 'error');
                 return false;
             }
         }
 
-        function initSocket() {
-            if (!currentToken) return;
-            
-            socket = io(API_URL || undefined, {
-                auth: { token: currentToken },
-                transports: ['websocket', 'polling']
-            });
-            
-            socket.on('connect', () => {
-                console.log('Socket connected');
-                socket.emit('authenticate', { 
-                    token: currentToken,
-                    guildId: DEFAULT_GUILD_ID 
+        async function deleteGameFromServer(id) {
+            try {
+                const response = await fetch(`${API_URL}/api/games/${id}?guildId=${currentGuildId}`, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json' }
                 });
+                
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                showToast('Usunięto grę!', 'success');
+                await loadGames();
+                
+            } catch (error) {
+                console.error('Błąd usuwania:', error);
+                showToast('Błąd usuwania: ' + error.message, 'error');
+            }
+        }
+
+        function renderGames() {
+            const grid = document.getElementById('gamesGrid');
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            
+            grid.innerHTML = '';
+            
+            const filtered = games.filter(game => {
+                const name = (game.name || '').toLowerCase();
+                const dev = (game.developer || '').toLowerCase();
+                const genre = (game.genre || '').toLowerCase();
+                return name.includes(search) || dev.includes(search) || genre.includes(search);
             });
             
-            socket.on('authenticated', (data) => {
-                console.log('Socket authenticated:', data);
-                updateUserStatus('online');
-            });
+            if (filtered.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <h3>📂 Brak gier</h3>
+                        <p>${search ? 'Nie znaleziono pasujących gier' : 'Dodaj pierwszą grę używając przycisku powyżej'}</p>
+                    </div>
+                `;
+                return;
+            }
             
-            socket.on('auth_error', (data) => {
-                console.error('Socket auth error:', data);
-                showNotification('Błąd autentykacji Socket', true);
-            });
-            
-            socket.on('new_message', (data) => {
-                if (currentChatFriend === data.fromUser) {
-                    loadChat();
-                    // Mark as read
-                    socket.emit('message_read', { fromUser: data.fromUser, messageId: data.message.id });
+            filtered.forEach(game => {
+                const isFree = game.price === 0;
+                const size = game.size ? `${game.size} GB` : 'N/A';
+                const compat = checkGameCompatibility(game);
+                const screenshots = game.screenshots || [];
+                
+                let iconHtml;
+                if (game.iconUrl) {
+                    iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 16px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"><div style="display:none; width: 80px; height: 80px; background: #2a2a3a; border-radius: 16px; align-items: center; justify-content: center; font-size: 40px;">🎮</div>`;
                 } else {
-                    showNotification('Nowa wiadomość od ' + data.fromUser);
+                    iconHtml = `<span style="font-size: 60px;">${game.icon || '🎮'}</span>`;
                 }
-            });
-            
-            socket.on('message_sent', (data) => {
-                loadChat();
-            });
-            
-            socket.on('message_error', (data) => {
-                showNotification('Błąd wysyłania wiadomości: ' + data.error, true);
-            });
-            
-            socket.on('friend_request', (data) => {
-                showNotification('Nowe zaproszenie od ' + data.from);
-                loadFriends();
-            });
-            
-            socket.on('friend_accepted', (data) => {
-                showNotification(data.by + ' zaakceptował zaproszenie');
-                loadFriends();
-            });
-            
-            socket.on('friend_status_change', (data) => {
-                updateFriendStatus(data.username, data.status);
-            });
-            
-            socket.on('new_game', (data) => {
-                showNotification('Nowa gra dostępna: ' + data.game.name);
-                loadGames();
-            });
-            
-            socket.on('new_comment', (data) => {
-                if (currentGameId === data.gameId) {
-                    loadComments(currentGameId);
-                }
-            });
-            
-            socket.on('new_rating', (data) => {
-                if (currentGameId === data.gameId) {
-                    loadGameRating(currentGameId);
-                }
-            });
-            
-            socket.on('typing', (data) => {
-                if (currentChatFriend === data.fromUser) {
-                    showTypingIndicator(data.fromUser);
-                }
-            });
-            
-            socket.on('stop_typing', (data) => {
-                if (currentChatFriend === data.fromUser) {
-                    hideTypingIndicator();
-                }
-            });
-            
-            socket.on('disconnect', (reason) => {
-                console.log('Socket disconnected:', reason);
-                updateUserStatus('offline');
-            });
-            
-            socket.on('connect_error', (error) => {
-                console.error('Socket connection error:', error);
-            });
-        }
-
-        function updateUserStatus(status) {
-            const statusText = document.getElementById('userStatusText');
-            if (statusText) {
-                statusText.textContent = status === 'online' ? 'Online' : 'Offline';
-                statusText.style.color = status === 'online' ? '#00ff88' : '#ff4444';
-            }
-            
-            if (socket && socket.connected) {
-                socket.emit('status_change', { 
-                    status: status,
-                    activity: currentGameId ? 'Przegląda grę' : 'Online'
-                });
-            }
-        }
-
-        function updateFriendStatus(username, status) {
-            const friendItems = document.querySelectorAll('.friend-item');
-            friendItems.forEach(item => {
-                if (item.getAttribute('data-friend') === username) {
-                    const statusEl = item.querySelector('.friend-status');
-                    if (statusEl) {
-                        statusEl.className = 'friend-status ' + (status === 'online' ? 'status-online' : 'status-offline');
-                        statusEl.textContent = status === 'online' ? '🟢 Online' : '🔴 Offline';
-                    }
-                }
-            });
-        }
-
-        function showTypingIndicator(username) {
-            const indicator = document.getElementById('typingIndicator');
-            indicator.textContent = username + ' pisze...';
-            indicator.classList.remove('hidden');
-            
-            clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(hideTypingIndicator, 5000);
-        }
-
-        function hideTypingIndicator() {
-            const indicator = document.getElementById('typingIndicator');
-            indicator.classList.add('hidden');
-        }
-
-        function setupEventListeners() {
-            // Auth buttons
-            document.getElementById('loginBtn').addEventListener('click', login);
-            document.getElementById('showRegisterBtn').addEventListener('click', showRegister);
-            document.getElementById('registerBtn').addEventListener('click', register);
-            document.getElementById('showLoginBtn').addEventListener('click', showLogin);
-            document.getElementById('logoutBtn').addEventListener('click', logout);
-            
-            // Navigation
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.addEventListener('click', function() {
-                    const page = this.getAttribute('data-page');
-                    navigate(page);
-                });
-            });
-            
-            // Search
-            document.getElementById('searchInput').addEventListener('input', debounce(searchGames, 300));
-            
-            // Modal
-            document.getElementById('closeModalBtn').addEventListener('click', closeGameModal);
-            document.getElementById('gameModal').addEventListener('click', function(e) {
-                if (e.target === this) closeGameModal();
-            });
-            
-            // Chat
-            document.getElementById('closeChatBtn').addEventListener('click', closeChat);
-            document.getElementById('sendMsgBtn').addEventListener('click', sendMessage);
-            document.getElementById('chatInput').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') sendMessage();
-            });
-            document.getElementById('chatInput').addEventListener('input', function() {
-                if (socket && socket.connected && currentChatFriend) {
-                    socket.emit('typing', { toUser: currentChatFriend });
-                }
-            });
-            
-            // Friends
-            document.getElementById('addFriendBtn').addEventListener('click', sendFriendRequest);
-        }
-
-        function debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
-                    clearTimeout(timeout);
-                    func(...args);
-                };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
-        }
-
-        // Auth Functions
-        async function checkAuth() {
-            const token = localStorage.getItem('token');
-            const username = localStorage.getItem('username');
-            
-            if (token && username) {
-                try {
-                    const response = await fetch(API_URL + '/api/auth/verify', {
-                        headers: { 'Authorization': 'Bearer ' + token }
-                    });
+                
+                let reqHtml = '';
+                if (game.requirements && (game.requirements.min || game.requirements.rec)) {
+                    const min = game.requirements.min || {};
+                    const rec = game.requirements.rec || {};
                     
-                    const data = await response.json();
+                    reqHtml = `
+                        <details class="game-requirements">
+                            <summary>🖥️ Wymagania systemowe</summary>
+                            ${min.os ? `
+                            <div class="req-section">
+                                <h4>Minimalne</h4>
+                                ${min.os ? `<div class="req-item"><span>OS:</span><span>${min.os}</span></div>` : ''}
+                                ${min.cpu ? `<div class="req-item"><span>CPU:</span><span>${min.cpu}</span></div>` : ''}
+                                ${min.ram ? `<div class="req-item"><span>RAM:</span><span>${min.ram}</span></div>` : ''}
+                                ${min.gpu ? `<div class="req-item"><span>GPU:</span><span>${min.gpu}</span></div>` : ''}
+                                ${min.storage ? `<div class="req-item"><span>Dysk:</span><span>${min.storage}</span></div>` : ''}
+                            </div>` : ''}
+                            ${rec.os ? `
+                            <div class="req-section">
+                                <h4>Rekomendowane</h4>
+                                ${rec.os ? `<div class="req-item"><span>OS:</span><span>${rec.os}</span></div>` : ''}
+                                ${rec.cpu ? `<div class="req-item"><span>CPU:</span><span>${rec.cpu}</span></div>` : ''}
+                                ${rec.ram ? `<div class="req-item"><span>RAM:</span><span>${rec.ram}</span></div>` : ''}
+                                ${rec.gpu ? `<div class="req-item"><span>GPU:</span><span>${rec.gpu}</span></div>` : ''}
+                                ${rec.storage ? `<div class="req-item"><span>Dysk:</span><span>${rec.storage}</span></div>` : ''}
+                            </div>` : ''}
+                        </details>
+                    `;
+                }
+
+                let screenshotsHtml = '';
+                if (screenshots.length > 0) {
+                    const visibleScreenshots = screenshots.slice(0, 4);
+                    const remaining = screenshots.length - 4;
                     
-                    if (data.valid) {
-                        currentUser = username;
-                        currentToken = token;
-                        showMainApp();
-                        initSocket();
+                    screenshotsHtml = `
+                        <div class="screenshots-preview">
+                            ${visibleScreenshots.map((url, idx) => `
+                                <div class="screenshot-thumb" onclick="openLightbox('${game.id}', ${idx})" title="Kliknij aby powiększyć">
+                                    <img src="${url}" alt="" loading="lazy" 
+                                         onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\'screenshot-error\'>❌</div>'">
+                                    ${idx === 3 && remaining > 0 ? `<div class="more-indicator">+${remaining}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                let compatBadge = '';
+                if (userPC) {
+                    if (compat.compatible) {
+                        compatBadge = '<span class="badge" style="background: #00ff88; color: #000;">✓ Działa</span>';
                     } else {
-                        showAuth();
+                        compatBadge = `<span class="badge" style="background: #ff3366; color: #fff;" title="${compat.reason}">✖ ${compat.reason}</span>`;
                     }
-                } catch (e) {
-                    showAuth();
                 }
-            } else {
-                showAuth();
-            }
-        }
-
-        function showAuth() {
-            document.getElementById('authView').classList.remove('hidden');
-            document.getElementById('mainView').classList.add('hidden');
-            document.getElementById('serverStatus').style.display = 'none';
-        }
-
-        function showMainApp() {
-            document.getElementById('authView').classList.add('hidden');
-            document.getElementById('mainView').classList.remove('hidden');
-            document.getElementById('serverStatus').style.display = 'flex';
-            
-            document.getElementById('sidebarUsername').textContent = currentUser;
-            document.getElementById('userAvatar').textContent = currentUser[0].toUpperCase();
-            
-            loadGames();
-            loadLibrary();
-            loadFriends();
-        }
-
-        function showRegister() {
-            document.getElementById('loginForm').classList.add('hidden');
-            document.getElementById('registerForm').classList.remove('hidden');
-        }
-
-        function showLogin() {
-            document.getElementById('registerForm').classList.add('hidden');
-            document.getElementById('loginForm').classList.remove('hidden');
-        }
-
-        async function login() {
-            const username = document.getElementById('loginUsername').value.trim();
-            const password = document.getElementById('loginPassword').value;
-            
-            if (!username || !password) {
-                showNotification('Wypełnij wszystkie pola', true);
-                return;
-            }
-            
-            try {
-                const response = await fetch(API_URL + '/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, guildId: DEFAULT_GUILD_ID })
-                });
                 
-                const data = await response.json();
-                
-                if (data.success) {
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('username', username);
-                    localStorage.setItem('userId', data.user.id);
-                    currentUser = username;
-                    currentToken = data.token;
-                    showMainApp();
-                    initSocket();
-                    
-                    if (data.user.hasPendingInvites) {
-                        showNotification('Masz oczekujące zaproszenia do znajomych!');
-                    }
-                } else {
-                    showNotification(data.error || 'Błędne dane logowania', true);
-                }
-            } catch (error) {
-                showNotification('Błąd logowania: ' + error.message, true);
-            }
-        }
-
-        async function register() {
-            const username = document.getElementById('regUsername').value.trim();
-            const email = document.getElementById('regEmail').value.trim();
-            const password = document.getElementById('regPassword').value;
-            
-            if (!username || !password) {
-                showNotification('Wypełnij wymagane pola', true);
-                return;
-            }
-            
-            try {
-                const response = await fetch(API_URL + '/api/auth/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, email, guildId: DEFAULT_GUILD_ID })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('username', username);
-                    localStorage.setItem('userId', data.userId);
-                    currentUser = username;
-                    currentToken = data.token;
-                    showMainApp();
-                    initSocket();
-                    showNotification('Konto utworzone pomyślnie!');
-                } else {
-                    showNotification(data.error || 'Błąd rejestracji', true);
-                }
-            } catch (error) {
-                showNotification('Błąd rejestracji: ' + error.message, true);
-            }
-        }
-
-        function logout() {
-            if (socket) {
-                socket.disconnect();
-                socket = null;
-            }
-            localStorage.removeItem('token');
-            localStorage.removeItem('username');
-            localStorage.removeItem('userId');
-            currentUser = null;
-            currentToken = null;
-            showAuth();
-        }
-
-        // Navigation
-        function navigate(page) {
-            document.querySelectorAll('.page').forEach(function(p) {
-                p.classList.remove('active');
-            });
-            document.querySelectorAll('.nav-link').forEach(function(l) {
-                l.classList.remove('active');
-            });
-            
-            document.getElementById(page + 'Page').classList.add('active');
-            document.querySelector('[data-page="' + page + '"]').classList.add('active');
-            
-            if (page === 'library') loadLibrary();
-            if (page === 'friends') loadFriends();
-        }
-
-        // Store Functions
-        async function loadGames() {
-            try {
-                const response = await fetch(API_URL + '/games?t=' + Date.now());
-                games = await response.json();
-                renderGames(games);
-            } catch (error) {
-                console.error('Error loading games:', error);
-                document.getElementById('gamesContainer').innerHTML = '<div class="empty-state">Błąd ładowania gier</div>';
-            }
-        }
-
-        function renderGames(gamesToRender) {
-            const container = document.getElementById('gamesContainer');
-            
-            if (gamesToRender.length === 0) {
-                container.innerHTML = '<div class="empty-state">Brak gier do wyświetlenia</div>';
-                return;
-            }
-            
-            container.innerHTML = gamesToRender.map(function(game) {
-                const rating = game.rating || '0.0';
-                const priceDisplay = game.price === 0 ? 'DARMOWE' : game.price + 'zł';
-                const bgStyle = game.color ? `background: ${game.color}` : 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-                
-                return '<div class="game-card" data-game-id="' + game.id + '">' +
-                    '<div class="game-image" style="' + bgStyle + '">' +
-                        (game.iconUrl ? '<img src="' + game.iconUrl + '" alt="' + escapeHtml(game.name) + '">' : (game.icon || '🎮')) +
-                    '</div>' +
-                    '<div class="game-info">' +
-                        '<div class="game-title">' + escapeHtml(game.name) + '</div>' +
-                        '<div class="game-dev">' + escapeHtml(game.developer || 'Nieznany') + '</div>' +
-                        '<div class="game-footer">' +
-                            '<div class="game-price">' + priceDisplay + '</div>' +
-                            '<div class="game-rating">★ ' + rating + '</div>' +
-                        '</div>' +
-                    '</div>' +
-                '</div>';
-            }).join('');
-            
-            container.querySelectorAll('.game-card').forEach(function(card) {
-                card.addEventListener('click', function() {
-                    openGameModal(this.getAttribute('data-game-id'));
-                });
+                const card = document.createElement('div');
+                card.className = 'game-card';
+                card.innerHTML = `
+                    <div class="game-header" style="background: ${game.color || '#00d4ff'}20;">
+                        ${iconHtml}
+                        <span class="game-pegi">PEGI ${game.pegi || 12}</span>
+                        <span class="game-size">💾 ${size}</span>
+                    </div>
+                    <div class="game-body">
+                        <div class="game-title">${game.name} ${compatBadge}</div>
+                        <div class="game-dev">${game.developer || 'Unknown'} ${game.genre ? `• ${game.genre}` : ''}</div>
+                        <div style="margin-bottom: 10px;">
+                            ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
+                            ${screenshots.length > 0 ? `<span class="screenshot-count-badge">📸 ${screenshots.length}</span>` : ''}
+                        </div>
+                        <div class="game-desc">${game.description || 'Brak opisu'}</div>
+                        ${screenshotsHtml}
+                        ${reqHtml}
+                        <div class="game-actions">
+                            <button class="btn btn-primary btn-icon" onclick="editGame('${game.id}')">✏️ Edytuj</button>
+                            ${compat.compatible ? 
+                                `<button class="btn btn-success btn-icon" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
+                                `<button class="btn btn-success btn-icon" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
+                            }
+                            <button class="btn btn-danger btn-icon" onclick="deleteGame('${game.id}')">🗑️</button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
             });
         }
 
-        function searchGames() {
-            const query = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = games.filter(function(g) {
-                return g.name.toLowerCase().includes(query) || 
-                       (g.developer && g.developer.toLowerCase().includes(query)) ||
-                       (g.genre && g.genre.toLowerCase().includes(query));
-            });
-            renderGames(filtered);
+        // Lightbox functions
+        function openLightbox(gameId, index) {
+            const game = games.find(g => g.id === gameId);
+            if (!game || !game.screenshots) return;
+            
+            currentLightboxImages = game.screenshots;
+            currentLightboxIndex = index;
+            
+            updateLightboxImage();
+            document.getElementById('lightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
         }
 
-        // Game Modal
-        async function openGameModal(gameId) {
-            currentGameId = gameId;
-            const game = games.find(function(g) { return g.id === gameId; });
-            if (!game) return;
+        function updateLightboxImage() {
+            const img = document.getElementById('lightboxImg');
+            img.src = currentLightboxImages[currentLightboxIndex];
             
-            const modal = document.getElementById('gameModal');
-            const body = document.getElementById('modalBody');
+            const prevBtn = document.querySelector('.lightbox-prev');
+            const nextBtn = document.querySelector('.lightbox-next');
             
-            const inLibrary = library.some(function(l) { return l.gameId === gameId; });
-            
-            body.innerHTML = 
-                '<h2 class="modal-title">' + escapeHtml(game.name) + '</h2>' +
-                '<div class="modal-meta">' +
-                    '<span class="meta-tag">🎯 ' + escapeHtml(game.genre || 'Nieznany') + '</span>' +
-                    '<span class="meta-tag">👨‍💻 ' + escapeHtml(game.developer || 'Nieznany') + '</span>' +
-                    '<span class="meta-tag">💰 ' + (game.price === 0 ? 'DARMOWE' : game.price + 'zł') + '</span>' +
-                    '<span class="meta-tag">🔞 PEGI ' + (game.pegi || '?') + '</span>' +
-                    (game.version ? '<span class="meta-tag">📦 v' + game.version + '</span>' : '') +
-                '</div>' +
-                
-                '<div class="rating-stats" id="ratingStats">' +
-                    '<div class="spinner" style="width: 20px; height: 20px;"></div>' +
-                '</div>' +
-                
-                '<div class="star-rating" id="gameRating">' +
-                    [1,2,3,4,5].map(function(i) {
-                        return '<span class="star" data-rating="' + i + '">★</span>';
-                    }).join('') +
-                '</div>' +
-                
-                '<p class="modal-description">' + escapeHtml(game.description || 'Brak opisu') + '</p>' +
-                
-                '<div class="modal-actions">' +
-                    (inLibrary ? 
-                        '<button class="btn btn-success" id="inLibraryBtn" disabled>✓ W bibliotece</button>' :
-                        '<button class="btn btn-primary" id="addToLibBtn">🛒 Dodaj do biblioteki</button>'
-                    ) +
-                    (game.download_url ? '<a href="' + game.download_url + '" target="_blank" class="btn btn-secondary" style="text-decoration: none; display: inline-block; text-align: center;">⬇️ Pobierz</a>' : '') +
-                '</div>' +
-                
-                '<div class="screenshots-grid" id="modalScreenshots"></div>' +
-                
-                '<div class="comments-section">' +
-                    '<h3>Komentarze</h3>' +
-                    '<div class="comment-form">' +
-                        '<textarea class="comment-textarea" id="commentText" placeholder="Napisz komentarz..."></textarea>' +
-                        '<button class="btn btn-small" id="addCommentBtn">Dodaj komentarz</button>' +
-                    '</div>' +
-                    '<div id="commentsList"></div>' +
-                '</div>';
-            
-            if (!inLibrary) {
-                document.getElementById('addToLibBtn').addEventListener('click', function() {
-                    addToLibrary(gameId);
-                });
-            }
-            
-            document.getElementById('addCommentBtn').addEventListener('click', addComment);
-            
-            document.querySelectorAll('#gameRating .star').forEach(function(star) {
-                star.addEventListener('click', function() {
-                    const rating = parseInt(this.getAttribute('data-rating'));
-                    rateGame(rating);
-                });
-            });
-            
-            modal.classList.add('active');
-            loadGameDetails(gameId);
+            prevBtn.style.display = currentLightboxImages.length > 1 ? 'block' : 'none';
+            nextBtn.style.display = currentLightboxImages.length > 1 ? 'block' : 'none';
         }
 
-        async function loadGameDetails(gameId) {
-            // Load rating stats
-            loadGameRating(gameId);
+        function changeImage(direction, event) {
+            event.stopPropagation();
+            currentLightboxIndex += direction;
             
-            // Load screenshots
-            try {
-                const response = await fetch(API_URL + '/api/screenshots/' + gameId + '?t=' + Date.now());
-                const data = await response.json();
-                const container = document.getElementById('modalScreenshots');
-                if (data.screenshots && data.screenshots.length > 0) {
-                    container.innerHTML = data.screenshots.map(function(s) {
-                        return '<div class="screenshot-thumb"><img src="' + s.url + '" alt="Screenshot"></div>';
-                    }).join('');
-                } else {
-                    container.innerHTML = '<div class="empty-state" style="padding: 20px;">Brak screenshotów</div>';
-                }
-            } catch (e) {
-                document.getElementById('modalScreenshots').innerHTML = '<div class="empty-state" style="padding: 20px;">Błąd ładowania screenshotów</div>';
-            }
+            if (currentLightboxIndex < 0) currentLightboxIndex = currentLightboxImages.length - 1;
+            if (currentLightboxIndex >= currentLightboxImages.length) currentLightboxIndex = 0;
             
-            // Load comments
-            loadComments(gameId);
+            updateLightboxImage();
         }
 
-        async function loadComments(gameId) {
-            try {
-                const response = await fetch(API_URL + '/api/games/' + gameId + '/comments?t=' + Date.now());
-                const data = await response.json();
-                
-                const container = document.getElementById('commentsList');
-                if (!data.comments || data.comments.length === 0) {
-                    container.innerHTML = '<div class="empty-state">Brak komentarzy</div>';
-                    return;
-                }
-                
-                container.innerHTML = data.comments.map(function(c) {
-                    const isOwner = c.username === currentUser;
-                    return '<div class="comment" data-comment-id="' + c.id + '">' +
-                        '<div class="comment-header">' +
-                            '<span class="comment-author">' + escapeHtml(c.username) + '</span>' +
-                            '<div class="comment-actions">' +
-                                '<span class="comment-date">' + new Date(c.createdAt).toLocaleDateString() + '</span>' +
-                                (isOwner ? '<button class="comment-delete-btn" onclick="deleteComment(\'' + c.id + '\')">🗑️</button>' : '') +
-                            '</div>' +
-                        '</div>' +
-                        (c.rating ? '<div style="color: #ffd700">' + '★'.repeat(c.rating) + '</div>' : '') +
-                        '<div>' + escapeHtml(c.content) + '</div>' +
-                    '</div>';
-                }).join('');
-            } catch (e) {
-                document.getElementById('commentsList').innerHTML = '<div class="empty-state">Błąd ładowania komentarzy</div>';
+        function closeLightbox(event) {
+            if (event.target.id === 'lightbox' || event.target.classList.contains('lightbox-close')) {
+                document.getElementById('lightbox').classList.remove('active');
+                document.body.style.overflow = '';
             }
         }
 
-        async function addComment() {
-            const content = document.getElementById('commentText').value.trim();
-            if (!content) {
-                showNotification('Wpisz treść komentarza', true);
-                return;
-            }
+        // Klawiatura w lightbox
+        document.addEventListener('keydown', (e) => {
+            if (!document.getElementById('lightbox').classList.contains('active')) return;
             
-            try {
-                const response = await fetch(API_URL + '/api/games/' + currentGameId + '/comments', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({
-                        username: currentUser,
-                        content: content
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('commentText').value = '';
-                    loadComments(currentGameId);
-                    showNotification('Komentarz dodany!');
-                } else {
-                    showNotification(data.error || 'Błąd dodawania komentarza', true);
-                }
-            } catch (e) {
-                showNotification('Błąd dodawania komentarza', true);
-            }
-        }
-
-        async function deleteComment(commentId) {
-            if (!confirm('Usunąć ten komentarz?')) return;
-            
-            try {
-                const response = await fetch(API_URL + '/api/games/' + currentGameId + '/comments/' + commentId, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({ username: currentUser })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    loadComments(currentGameId);
-                    showNotification('Komentarz usunięty');
-                } else {
-                    showNotification(data.error || 'Błąd usuwania', true);
-                }
-            } catch (e) {
-                showNotification('Błąd usuwania komentarza', true);
-            }
-        }
-
-        async function loadGameRating(gameId) {
-            try {
-                const response = await fetch(API_URL + '/api/games/' + gameId + '/ratings?username=' + currentUser + '&t=' + Date.now());
-                const data = await response.json();
-                
-                // Update stats
-                const statsContainer = document.getElementById('ratingStats');
-                if (data.totalRatings > 0) {
-                    let distributionHtml = '';
-                    for (let i = 5; i >= 1; i--) {
-                        const count = data.distribution[i] || 0;
-                        const percent = (count / data.totalRatings) * 100;
-                        distributionHtml += '<div class="rating-bar">' +
-                            '<span>' + i + '★</span>' +
-                            '<div class="rating-bar-fill">' +
-                                '<div class="rating-bar-fill-inner" style="width: ' + percent + '%"></div>' +
-                            '</div>' +
-                            '<span>' + count + '</span>' +
-                        '</div>';
-                    }
-                    
-                    statsContainer.innerHTML = 
-                        '<div class="rating-average">★ ' + data.averageRating + ' (' + data.totalRatings + ' ocen)</div>' +
-                        distributionHtml;
-                } else {
-                    statsContainer.innerHTML = '<div class="empty-state" style="padding: 10px;">Brak ocen</div>';
-                }
-                
-                // Update stars
-                if (data.yourRating) {
-                    const stars = document.querySelectorAll('#gameRating .star');
-                    stars.forEach(function(s, i) {
-                        if (i < data.yourRating) s.classList.add('filled');
-                        else s.classList.remove('filled');
-                    });
-                }
-            } catch (e) {
-                document.getElementById('ratingStats').innerHTML = '<div class="empty-state" style="padding: 10px;">Błąd ładowania ocen</div>';
-            }
-        }
-
-        async function rateGame(rating) {
-            try {
-                const response = await fetch(API_URL + '/api/games/' + currentGameId + '/rate', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({
-                        username: currentUser,
-                        rating: rating
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    const stars = document.querySelectorAll('#gameRating .star');
-                    stars.forEach(function(s, i) {
-                        if (i < rating) s.classList.add('filled');
-                        else s.classList.remove('filled');
-                    });
-                    
-                    showNotification('Oceniono na ' + rating + ' gwiazdek!');
-                    loadGameRating(currentGameId);
-                    loadGames(); // Refresh game list to update rating
-                } else {
-                    showNotification(data.error || 'Błąd oceniania', true);
-                }
-            } catch (e) {
-                showNotification('Błąd oceniania', true);
-            }
-        }
-
-        function closeGameModal() {
-            document.getElementById('gameModal').classList.remove('active');
-            currentGameId = null;
-        }
-
-        // Library Functions
-        async function loadLibrary() {
-            try {
-                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library?t=' + Date.now(), {
-                    headers: { 'Authorization': 'Bearer ' + currentToken }
-                });
-                library = await response.json();
-                renderLibrary();
-            } catch (error) {
-                console.error('Error loading library:', error);
-                document.getElementById('libraryContainer').innerHTML = '<div class="empty-state">Błąd ładowania biblioteki</div>';
-            }
-        }
-
-        function renderLibrary() {
-            const container = document.getElementById('libraryContainer');
-            
-            if (library.length === 0) {
-                container.innerHTML = '<div class="empty-state">Twoja biblioteka jest pusta. Przejdź do sklepu!</div>';
-                return;
-            }
-            
-            container.innerHTML = library.map(function(item) {
-                const game = item.gameDetails || {};
-                const playTimeHours = Math.floor((item.playTime || 0) / 60);
-                const playTimeMins = (item.playTime || 0) % 60;
-                
-                return '<div class="library-card">' +
-                    '<div class="library-icon">' +
-                        (game.iconUrl ? '<img src="' + game.iconUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px" alt="' + escapeHtml(game.name || '') + '">' : (game.icon || '🎮')) +
-                    '</div>' +
-                    '<div class="library-info">' +
-                        '<div class="library-title">' + escapeHtml(game.name || 'Unknown') + '</div>' +
-                        '<div class="library-meta">' +
-                            'Dodano: ' + new Date(item.addedAt).toLocaleDateString() +
-                        '</div>' +
-                        '<div class="library-meta">' +
-                            'Czas gry: ' + playTimeHours + 'h ' + playTimeMins + 'm' +
-                        '</div>' +
-                        '<div class="library-actions">' +
-                            (game.download_url ? '<button class="btn btn-small btn-success install-btn" data-game-id="' + item.gameId + '">⬇️ Pobierz</button>' : '') +
-                            '<button class="btn btn-small btn-secondary remove-game-btn" data-game-id="' + item.gameId + '">🗑️ Usuń</button>' +
-                        '</div>' +
-                    '</div>' +
-                '</div>';
-            }).join('');
-            
-            container.querySelectorAll('.install-btn').forEach(function(btn) {
-                btn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const gameId = this.getAttribute('data-game-id');
-                    const game = library.find(l => l.gameId === gameId);
-                    if (game && game.gameDetails && game.gameDetails.download_url) {
-                        window.open(game.gameDetails.download_url, '_blank');
-                    }
-                });
-            });
-            
-            container.querySelectorAll('.remove-game-btn').forEach(function(btn) {
-                btn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    removeFromLibrary(this.getAttribute('data-game-id'));
-                });
-            });
-        }
-
-        async function addToLibrary(gameId) {
-            try {
-                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({ gameId: gameId })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('Dodano do biblioteki!');
-                    loadLibrary();
-                    closeGameModal();
-                } else {
-                    showNotification(data.error || 'Błąd dodawania', true);
-                }
-            } catch (e) {
-                showNotification('Błąd dodawania do biblioteki', true);
-            }
-        }
-
-        async function removeFromLibrary(gameId) {
-            if (!confirm('Czy na pewno chcesz usunąć tę grę z biblioteki?')) return;
-            
-            try {
-                const response = await fetch(API_URL + '/api/users/' + currentUser + '/library/' + gameId, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': 'Bearer ' + currentToken }
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('Usunięto z biblioteki');
-                    loadLibrary();
-                } else {
-                    showNotification(data.error || 'Błąd usuwania', true);
-                }
-            } catch (e) {
-                showNotification('Błąd usuwania', true);
-            }
-        }
-
-        // Friends Functions
-        async function loadFriends() {
-            try {
-                const response = await fetch(API_URL + '/api/friends/' + currentUser + '?t=' + Date.now(), {
-                    headers: { 'Authorization': 'Bearer ' + currentToken }
-                });
-                const data = await response.json();
-                
-                friends = data.friends || [];
-                renderFriends(data.friends || [], data.pendingInvites || []);
-                
-                const badge = document.getElementById('friendsBadge');
-                if (data.pendingInvites && data.pendingInvites.length > 0) {
-                    badge.textContent = data.pendingInvites.length;
-                    badge.classList.remove('hidden');
-                } else {
-                    badge.classList.add('hidden');
-                }
-            } catch (error) {
-                console.error('Error loading friends:', error);
-                document.getElementById('friendsList').innerHTML = '<div class="empty-state">Błąd ładowania znajomych</div>';
-            }
-        }
-
-        function renderFriends(friendsList, pending) {
-            const container = document.getElementById('friendsList');
-            
-            let html = '<h3 style="margin-bottom: 15px;">Twoi znajomi (' + friendsList.length + ')</h3>';
-            
-            if (friendsList.length === 0) {
-                html += '<div class="empty-state">Nie masz jeszcze znajomych</div>';
-            } else {
-                html += friendsList.map(function(f) {
-                    return '<div class="friend-item" data-friend="' + f.username + '">' +
-                        '<div class="friend-avatar">' + f.username[0].toUpperCase() + '</div>' +
-                        '<div class="friend-info">' +
-                            '<div class="friend-name">' + f.username + '</div>' +
-                            '<div class="friend-status ' + (f.status === 'online' ? 'status-online' : 'status-offline') + '">' +
-                                (f.status === 'online' ? '🟢 Online' : '🔴 Offline') +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="friend-actions">' +
-                            '<button class="friend-remove-btn" onclick="removeFriend(\'' + f.username + '\')" title="Usuń znajomego">×</button>' +
-                        '</div>' +
-                    '</div>';
-                }).join('');
-            }
-            
-            container.innerHTML = html;
-            
-            container.querySelectorAll('.friend-item').forEach(function(item) {
-                item.addEventListener('click', function(e) {
-                    if (!e.target.closest('.friend-remove-btn')) {
-                        openChat(this.getAttribute('data-friend'));
-                    }
-                });
-            });
-            
-            const pendingContainer = document.getElementById('pendingInvites');
-            if (pending && pending.length > 0) {
-                pendingContainer.innerHTML = 
-                    '<h3 style="margin: 20px 0 15px;">Oczekujące zaproszenia (' + pending.length + ')</h3>' +
-                    pending.map(function(p) {
-                        return '<div class="invite-item">' +
-                            '<span>' + p.from + '</span>' +
-                            '<div class="invite-actions">' +
-                                '<button class="btn-icon btn-accept" data-from="' + p.from + '" data-action="accept" title="Akceptuj">✓</button>' +
-                                '<button class="btn-icon btn-decline" data-from="' + p.from + '" data-action="decline" title="Odrzuć">✕</button>' +
-                            '</div>' +
-                        '</div>';
-                    }).join('');
-                
-                pendingContainer.querySelectorAll('.btn-icon').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        respondInvite(this.getAttribute('data-from'), this.getAttribute('data-action') === 'accept');
-                    });
-                });
-            } else {
-                pendingContainer.innerHTML = '';
-            }
-        }
-
-        async function sendFriendRequest() {
-            const username = document.getElementById('friendUsername').value.trim();
-            if (!username || username === currentUser) {
-                showNotification('Wpisz poprawną nazwę użytkownika', true);
-                return;
-            }
-            
-            try {
-                // Try Socket.IO first
-                if (socket && socket.connected) {
-                    socket.emit('friend_request_sent', { toUser: username });
-                    showNotification('Zaproszenie wysłane!');
-                    document.getElementById('friendUsername').value = '';
-                    return;
-                }
-                
-                // Fallback to HTTP
-                const response = await fetch(API_URL + '/api/friends/add', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({ fromUser: currentUser, toUser: username })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('Zaproszenie wysłane!');
-                    document.getElementById('friendUsername').value = '';
-                } else {
-                    showNotification(data.error || 'Błąd wysyłania', true);
-                }
-            } catch (e) {
-                showNotification('Błąd wysyłania zaproszenia', true);
-            }
-        }
-
-        async function respondInvite(fromUser, accept) {
-            try {
-                // Try Socket.IO first
-                if (socket && socket.connected) {
-                    socket.emit('friend_respond', { fromUser: fromUser, accept: accept });
-                    showNotification(accept ? 'Dodano znajomego!' : 'Odrzucono zaproszenie');
-                    loadFriends();
-                    return;
-                }
-                
-                // Fallback to HTTP
-                const response = await fetch(API_URL + '/api/friends/respond', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({ 
-                        username: currentUser, 
-                        fromUser: fromUser, 
-                        accept: accept 
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification(accept ? 'Dodano znajomego!' : 'Odrzucono zaproszenie');
-                    loadFriends();
-                } else {
-                    showNotification(data.error || 'Błąd', true);
-                }
-            } catch (e) {
-                showNotification('Błąd odpowiadania na zaproszenie', true);
-            }
-        }
-
-        async function removeFriend(friendName) {
-            if (!confirm('Usunąć ' + friendName + ' ze znajomych?')) return;
-            
-            try {
-                const response = await fetch(API_URL + '/api/friends/remove', {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({ 
-                        username: currentUser,
-                        friendName: friendName 
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('Znajomy usunięty');
-                    loadFriends();
-                } else {
-                    showNotification(data.error || 'Błąd usuwania', true);
-                }
-            } catch (e) {
-                showNotification('Błąd usuwania znajomego', true);
-            }
-        }
-
-        // Chat Functions
-        async function openChat(friendUsername) {
-            currentChatFriend = friendUsername;
-            document.getElementById('chatWith').textContent = 'Rozmowa z ' + friendUsername;
-            document.getElementById('chatModal').classList.add('active');
-            await loadChat();
-        }
-
-        async function loadChat() {
-            if (!currentChatFriend) return;
-            
-            try {
-                const response = await fetch(API_URL + '/api/chat/' + currentUser + '/' + currentChatFriend + '?t=' + Date.now(), {
-                    headers: { 'Authorization': 'Bearer ' + currentToken }
-                });
-                const data = await response.json();
-                
-                const container = document.getElementById('chatMessages');
-                container.innerHTML = (data.messages || []).map(function(m) {
-                    return '<div class="message ' + (m.sender === currentUser ? 'sent' : '') + '">' +
-                        '<div class="message-bubble">' + escapeHtml(m.content) + '</div>' +
-                        '<div style="font-size: 11px; opacity: 0.6; margin-top: 3px;">' +
-                            new Date(m.timestamp).toLocaleTimeString() +
-                        '</div>' +
-                    '</div>';
-                }).join('');
-                
-                container.scrollTop = container.scrollHeight;
-            } catch (e) {
-                document.getElementById('chatMessages').innerHTML = '<div class="empty-state">Błąd ładowania czatu</div>';
-            }
-        }
-
-        async function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const content = input.value.trim();
-            if (!content || !currentChatFriend) return;
-            
-            // Use Socket.IO
-            if (socket && socket.connected) {
-                socket.emit('send_message', {
-                    toUser: currentChatFriend,
-                    content: content,
-                    tempId: Date.now()
-                });
-                input.value = '';
-                return;
-            }
-            
-            // Fallback to HTTP
-            try {
-                const response = await fetch(API_URL + '/api/chat/send', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + currentToken
-                    },
-                    body: JSON.stringify({
-                        fromUser: currentUser,
-                        toUser: currentChatFriend,
-                        content: content
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    input.value = '';
-                    loadChat();
-                } else {
-                    showNotification(data.error || 'Błąd wysyłania', true);
-                }
-            } catch (e) {
-                showNotification('Błąd wysyłania wiadomości', true);
-            }
-        }
-
-        function closeChat() {
-            document.getElementById('chatModal').classList.remove('active');
-            currentChatFriend = null;
-        }
-
-        // Utility
-        function showNotification(message, isError = false) {
-            const div = document.createElement('div');
-            div.className = 'notification' + (isError ? ' error' : '');
-            div.textContent = message;
-            document.body.appendChild(div);
-            setTimeout(function() { div.remove(); }, 3000);
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Close modals on Escape
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeGameModal();
-                closeChat();
-            }
+            if (e.key === 'Escape') closeLightbox({ target: { id: 'lightbox' } });
+            if (e.key === 'ArrowLeft') changeImage(-1, { stopPropagation: () => {} });
+            if (e.key === 'ArrowRight') changeImage(1, { stopPropagation: () => {} });
         });
 
-        // Handle window beforeunload
-        window.addEventListener('beforeunload', function() {
-            if (socket) {
-                socket.disconnect();
+        function downloadGame(gameId) {
+            const game = games.find(g => g.id === gameId);
+            if (!game || !game.download_url) {
+                showToast('Brak linku do pobrania!', 'error');
+                return;
             }
+            window.open(game.download_url, '_blank');
+        }
+
+        function filterGames() {
+            renderGames();
+        }
+
+        function openModal(id = null) {
+            if (!currentGuildId) {
+                showToast('Najpierw wybierz serwer!', 'error');
+                return;
+            }
+
+            editingId = id;
+            currentScreenshots = [];
+            currentIconType = 'emoji';
+            selectIconType('emoji');
+            
+            document.getElementById('modal').style.display = 'flex';
+            document.getElementById('modalTitle').textContent = id ? 'Edytuj Grę' : 'Dodaj Nową Grę';
+            
+            document.getElementById('emojiPreview').textContent = '🎮';
+            document.getElementById('imagePreview').innerHTML = '<span style="font-size: 30px;">📷</span>';
+            document.getElementById('inputIconUrl').value = '';
+            
+            if (id) {
+                const game = games.find(g => g.id === id);
+                if (game) {
+                    document.getElementById('inputName').value = game.name || '';
+                    document.getElementById('inputDev').value = game.developer || '';
+                    document.getElementById('inputPrice').value = game.price || 0;
+                    document.getElementById('inputPegi').value = game.pegi || 12;
+                    document.getElementById('inputColor').value = game.color || '#00d4ff';
+                    document.getElementById('inputUrl').value = game.download_url || '';
+                    document.getElementById('inputDesc').value = game.description || '';
+                    document.getElementById('inputSize').value = game.size || '';
+                    document.getElementById('inputVersion').value = game.version || '';
+                    document.getElementById('inputGenre').value = game.genre || '';
+                    document.getElementById('inputReleaseDate').value = game.releaseDate || '';
+                    document.getElementById('inputPublisher').value = game.publisher || '';
+                    document.getElementById('inputLanguage').value = game.language || '';
+                    
+                    if (game.iconUrl) {
+                        selectIconType('image');
+                        document.getElementById('inputIconUrl').value = game.iconUrl;
+                        document.getElementById('imagePreview').innerHTML = `<img src="${game.iconUrl}" alt="Icon">`;
+                    } else {
+                        document.getElementById('inputIcon').value = game.icon || '';
+                        document.getElementById('emojiPreview').textContent = game.icon || '🎮';
+                    }
+                    
+                    if (game.screenshots) {
+                        currentScreenshots = [...game.screenshots];
+                    }
+                    renderScreenshots();
+                    
+                    if (game.requirements) {
+                        const min = game.requirements.min || {};
+                        const rec = game.requirements.rec || {};
+                        
+                        document.getElementById('reqMinOs').value = min.os || '';
+                        document.getElementById('reqMinCpu').value = min.cpu || '';
+                        document.getElementById('reqMinRam').value = min.ram || '';
+                        document.getElementById('reqMinGpu').value = min.gpu || '';
+                        document.getElementById('reqMinStorage').value = min.storage || '';
+                        
+                        document.getElementById('reqRecOs').value = rec.os || '';
+                        document.getElementById('reqRecCpu').value = rec.cpu || '';
+                        document.getElementById('reqRecRam').value = rec.ram || '';
+                        document.getElementById('reqRecGpu').value = rec.gpu || '';
+                        document.getElementById('reqRecStorage').value = rec.storage || '';
+                    }
+                }
+            } else {
+                document.getElementById('gameForm').reset();
+                document.getElementById('inputColor').value = '#00d4ff';
+                document.getElementById('emojiPreview').textContent = '🎮';
+                renderScreenshots();
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            editingId = null;
+            currentScreenshots = [];
+        }
+
+        async function saveGame(e) {
+            e.preventDefault();
+            
+            const gameData = {
+                name: document.getElementById('inputName').value,
+                developer: document.getElementById('inputDev').value,
+                price: parseFloat(document.getElementById('inputPrice').value) || 0,
+                pegi: parseInt(document.getElementById('inputPegi').value) || 12,
+                icon: currentIconType === 'emoji' ? (document.getElementById('inputIcon').value || '🎮') : null,
+                iconUrl: currentIconType === 'image' ? document.getElementById('inputIconUrl').value : null,
+                color: document.getElementById('inputColor').value,
+                download_url: document.getElementById('inputUrl').value || null,
+                description: document.getElementById('inputDesc').value,
+                size: parseFloat(document.getElementById('inputSize').value) || null,
+                version: document.getElementById('inputVersion').value || '1.0',
+                genre: document.getElementById('inputGenre').value || 'Nieznany',
+                releaseDate: document.getElementById('inputReleaseDate').value || new Date().toISOString().split('T')[0],
+                publisher: document.getElementById('inputPublisher').value || '',
+                language: document.getElementById('inputLanguage').value || 'Polski/Angielski',
+                screenshots: currentScreenshots,
+                requirements: {
+                    min: {
+                        os: document.getElementById('reqMinOs').value,
+                        cpu: document.getElementById('reqMinCpu').value,
+                        ram: document.getElementById('reqMinRam').value,
+                        gpu: document.getElementById('reqMinGpu').value,
+                        storage: document.getElementById('reqMinStorage').value
+                    },
+                    rec: {
+                        os: document.getElementById('reqRecOs').value,
+                        cpu: document.getElementById('reqRecCpu').value,
+                        ram: document.getElementById('reqRecRam').value,
+                        gpu: document.getElementById('reqRecGpu').value,
+                        storage: document.getElementById('reqRecStorage').value
+                    }
+                }
+            };
+            
+            const success = await saveGameToServer(gameData);
+            if (success) {
+                closeModal();
+            }
+        }
+
+        function editGame(id) {
+            openModal(id);
+        }
+
+        async function deleteGame(id) {
+            const game = games.find(g => g.id === id);
+            if (!confirm(`Czy na pewno chcesz usunąć "${game?.name || id}"?`)) return;
+            await deleteGameFromServer(id);
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        document.getElementById('modal').addEventListener('click', (e) => {
+            if (e.target.id === 'modal') closeModal();
         });
+
+        const savedConfig = localStorage.getItem('userPCConfig');
+        if (savedConfig) {
+            userPC = JSON.parse(savedConfig);
+            showCompatPanel();
+        }
     </script>
 </body>
 </html>
