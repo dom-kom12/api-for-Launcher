@@ -1,4 +1,4 @@
-// server.js - ALWAYSDATA WERSJA z DROPBOX STORAGE (POPRAWIONA)
+// server.js - ALWAYSDATA WERSJA z DROPBOX STORAGE (POPRAWIONA - STAŁE LINKI)
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -2695,6 +2695,9 @@ dropboxTokenManager.initialize().then(() => {
 }).then(() => {
     console.log('✅ Storage gotowy');
     
+    // Uruchom automatyczny backup
+    startAutomaticBackup();
+    
     if (DISCORD_TOKEN) {
         console.log('🔌 Łączenie z Discordem...');
         
@@ -2735,6 +2738,7 @@ process.on('SIGINT', () => {
     isShuttingDown = true;
     
     dropboxTokenManager.stop();
+    stopAutomaticBackup();
     
     if (discordReady) {
         sendDiscordNotification(
