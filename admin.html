@@ -5,11 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nebula Admin - Zarządzanie Grami</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -496,7 +492,6 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Ikona - wybór między emoji a obrazkiem */
         .icon-selector {
             display: flex;
             gap: 20px;
@@ -542,7 +537,6 @@
             object-fit: cover;
         }
 
-        /* Drag & Drop dla screenshotów */
         .drop-zone {
             border: 3px dashed #2a2a3a;
             border-radius: 12px;
@@ -617,18 +611,6 @@
             opacity: 1;
         }
 
-        .screenshot-uploading {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
         .add-screenshot-btn {
             width: 120px;
             height: 67px;
@@ -647,10 +629,6 @@
         .add-screenshot-btn:hover {
             border-color: #00d4ff;
             color: #00d4ff;
-        }
-
-        .screenshot-input {
-            display: none;
         }
 
         .file-input {
@@ -699,29 +677,6 @@
             color: #ff3366;
         }
 
-        .compat-unknown {
-            background: #ffaa0030;
-            color: #ffaa00;
-        }
-
-        /* Progress bar dla uploadu */
-        .upload-progress {
-            width: 100%;
-            height: 4px;
-            background: #2a2a3a;
-            border-radius: 2px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-
-        .upload-progress-bar {
-            height: 100%;
-            background: #00d4ff;
-            width: 0%;
-            transition: width 0.3s;
-        }
-
-        /* Dropbox status */
         .dropbox-status {
             display: inline-flex;
             align-items: center;
@@ -770,7 +725,6 @@
             <button class="btn btn-secondary" onclick="checkDropboxStatus()">☁️ Status Dropbox</button>
         </div>
 
-        <!-- Panel kompatybilności -->
         <div class="compat-check" id="compatPanel" style="display: none;">
             <h3>🖥️ Twoja Konfiguracja</h3>
             <div id="compatList"></div>
@@ -784,7 +738,6 @@
         </div>
     </div>
     
-    <!-- Modal -->
     <div class="modal-overlay" id="modal">
         <div class="modal">
             <div class="modal-header">
@@ -855,7 +808,6 @@
                         </div>
                     </div>
 
-                    <!-- Wybór ikony -->
                     <div class="section-title">🎨 Ikona Gry</div>
                     
                     <div class="icon-selector">
@@ -891,7 +843,6 @@
                         <textarea id="inputDesc" rows="3" placeholder="Krótki opis gry..."></textarea>
                     </div>
 
-                    <!-- Screenshoty z Drag & Drop -->
                     <div class="section-title">📸 Screenshoty (Drag & Drop)</div>
                     
                     <div class="drop-zone" id="dropZone" onclick="document.getElementById('screenshotFileInput').click()">
@@ -905,7 +856,6 @@
 
                     <div class="screenshots-section">
                         <div class="screenshots-list" id="screenshotsList">
-                            <!-- Tutaj będą screenshoty -->
                         </div>
                     </div>
 
@@ -984,7 +934,6 @@
         let currentScreenshots = [];
         let currentIconType = 'emoji';
 
-        // Inicjalizacja
         init();
 
         async function init() {
@@ -1043,7 +992,6 @@
             const formData = new FormData();
             formData.append('screenshot', file);
             
-            // Dodaj tymczasowy placeholder
             const tempId = 'temp_' + Date.now();
             const container = document.getElementById('screenshotsList');
             const item = document.createElement('div');
@@ -1066,7 +1014,6 @@
 
                 const data = await response.json();
                 
-                // Zamień na prawdziwy obrazek
                 currentScreenshots.push(data.url);
                 renderScreenshots();
                 showToast('Screenshot dodany!', 'success');
@@ -1144,7 +1091,7 @@
             try {
                 document.getElementById('gamesCount').innerHTML = '<span class="loading"></span> Ładowanie...';
                 
-                const response = await fetch(`${API_URL}/games`, {
+                const response = await fetch(`${API_URL}/api/games`, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -1362,7 +1309,6 @@
                 const compat = checkGameCompatibility(game);
                 const screenshots = game.screenshots || [];
                 
-                // Ikona - obrazek lub emoji
                 let iconHtml;
                 if (game.iconUrl) {
                     iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 16px;">`;
@@ -1477,7 +1423,6 @@
             document.getElementById('modal').style.display = 'flex';
             document.getElementById('modalTitle').textContent = id ? 'Edytuj Grę' : 'Dodaj Nową Grę';
             
-            // Reset form
             document.getElementById('emojiPreview').textContent = '🎮';
             document.getElementById('imagePreview').innerHTML = '<span style="font-size: 30px;">📷</span>';
             document.getElementById('inputIconUrl').value = '';
@@ -1499,7 +1444,6 @@
                     document.getElementById('inputPublisher').value = game.publisher || '';
                     document.getElementById('inputLanguage').value = game.language || '';
                     
-                    // Ikona
                     if (game.iconUrl) {
                         selectIconType('image');
                         document.getElementById('inputIconUrl').value = game.iconUrl;
@@ -1509,13 +1453,11 @@
                         document.getElementById('emojiPreview').textContent = game.icon || '🎮';
                     }
                     
-                    // Screenshoty
                     if (game.screenshots) {
                         currentScreenshots = [...game.screenshots];
                     }
                     renderScreenshots();
                     
-                    // Wymagania
                     if (game.requirements) {
                         const min = game.requirements.min || {};
                         const rec = game.requirements.rec || {};
