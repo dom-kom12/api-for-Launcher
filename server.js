@@ -1,4 +1,4 @@
-// server.js - POPRAWIONA WERSJA z poprawnymi endpointami
+// server.js - ALWAYSDATA WERSJA z DROPBOX STORAGE (POPRAWIONA)
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const http = require('http');
 const multer = require('multer');
 const { Server } = require('socket.io');
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ChannelType } = require('discord.js');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,7 +15,7 @@ const server = http.createServer(app);
 // WAŻNE DLA ALWAYSDATA - trust proxy
 app.set('trust proxy', 1);
 
-// Konfiguracja Socket.IO
+// Konfiguracja Socket.IO z CORS dla zewnętrznych połączeń
 const io = new Server(server, {
     cors: {
         origin: '*',
@@ -31,13 +31,22 @@ const io = new Server(server, {
 // Konfiguracja
 const PORT = process.env.PORT || 8100;
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+
+// ID kanałów Discord (TYLKO do powiadomień i backupu awaryjnego)
 const NOTIFICATION_CHANNEL_ID = '1477577363285082123';
 const GLOBAL_DATA_CHANNEL_ID = '1477579719435092100';
+
+// Multi-guild support
 const ALLOWED_GUILDS = process.env.ALLOWED_GUILDS 
     ? process.env.ALLOWED_GUILDS.split(',').map(id => id.trim())
     : ['1477574526933012541'];
+
 const DEFAULT_GUILD_ID = ALLOWED_GUILDS[0];
+
+// Self-ping
 const PING_INTERVAL = 2 * 60 * 1000;
+
+// Lokalna ścieżka tylko dla tymczasowych plików
 const BASE_PATH = '/home/dom-kom/SYS/TEM';
 
 // === DROPBOX CONFIGURATION ===
@@ -49,7 +58,7 @@ const DROPBOX_CONFIG = {
     basePath: '/nebula-game-server'
 };
 
-// === DROPBOX TOKEN MANAGER ===
+// Dropbox Token Manager
 class DropboxTokenManager {
     constructor() {
         this.accessToken = null;
@@ -171,20 +180,25 @@ class DropboxTokenManager {
     }
 }
 
+// Inicjalizacja managera tokenów Dropbox
 const dropboxTokenManager = new DropboxTokenManager();
 
-// === DROPBOX API FUNCTIONS ===
+// === DROPBOX STORAGE API (POPRAWIONE) ===
+
+// Funkcja pomocnicza do Dropbox API - POPRAWIONA
 async function dropboxApiRequest(endpoint, options = {}) {
     const token = await dropboxTokenManager.getValidAccessToken();
     
     const isContentApi = endpoint.startsWith('/files/download') || endpoint.startsWith('/files/upload');
     const baseUrl = isContentApi ? 'https://content.dropboxapi.com/2' : 'https://api.dropboxapi.com/2';
     
+    // Przygotuj nagłówki - WAŻNE: Authorization MUSI być w headers
     const headers = {
         'Authorization': `Bearer ${token}`,
         ...options.headers
     };
     
+    // Jeśli nie ma Content-Type i nie jest to upload/download, dodaj domyślny
     if (!headers['Content-Type'] && !isContentApi) {
         headers['Content-Type'] = 'application/json';
     }
@@ -192,18 +206,22 @@ async function dropboxApiRequest(endpoint, options = {}) {
     const url = `${baseUrl}${endpoint}`;
     
     console.log(`📡 Dropbox API: ${endpoint}`);
+    console.log(`   URL: ${url}`);
+    console.log(`   Headers: ${JSON.stringify({ ...headers, Authorization: 'Bearer ***' })}`);
     
     const fetchOptions = {
         method: options.method || 'POST',
         headers: headers
     };
     
+    // Dodaj body tylko jeśli istnieje
     if (options.body !== undefined) {
         fetchOptions.body = options.body;
     }
     
     const response = await fetch(url, fetchOptions);
     
+    // Jeśli 401, spróbuj odświeżyć token i ponowić
     if (response.status === 401) {
         console.log('🔄 Token wygasł, odświeżam...');
         await dropboxTokenManager.refreshAccessToken();
@@ -222,6 +240,7 @@ async function dropboxApiRequest(endpoint, options = {}) {
     return response;
 }
 
+// Zapisz plik do Dropbox (tekstowy/JSON)
 async function saveToDropbox(dropboxPath, content) {
     try {
         const buffer = Buffer.from(content, 'utf-8');
@@ -257,6 +276,404 @@ async function saveToDropbox(dropboxPath, content) {
     }
 }
 
+// === KONFIGURACJA BACKUPU ===
+const BACKUP_CONFIG = {
+    interval: 60 * 60 * 1000, // Co 1 godzinę (w ms)
+    maxBackups: 24, // Maksymalnie 24 kopie (ostatnie 24h)
+    folders: [
+        '/global',
+        '/users',
+        '/chats'
+    ]
+};
+
+// === FUNKCJE BACKUP ===
+
+// Utwórz timestamp w formacie YYYYMMDD_HHMMSS
+function getBackupTimestamp() {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+}
+
+// Skopiuj folder w Dropbox (rekursywnie)
+async function copyDropboxFolder(fromPath, toPath) {
+    try {
+        // Utwórz folder docelowy
+        await createDropboxFolder(toPath.replace(DROPBOX_CONFIG.basePath, ''));
+        
+        // Pobierz listę plików
+        const files = await listDropboxFolder(fromPath.replace(DROPBOX_CONFIG.basePath, ''));
+        
+        for (const file of files) {
+            const fileName = file.name;
+            const sourcePath = file.path_display;
+            const destPath = `${toPath}/${fileName}`;
+            
+            if (file['.tag'] === 'folder') {
+                // Rekursywnie kopiuj podfoldery
+                await copyDropboxFolder(sourcePath, destPath);
+            } else {
+                // Kopiuj plik
+                await dropboxApiRequest('/files/copy_v2', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        from_path: sourcePath,
+                        to_path: destPath,
+                        autorename: false
+                    })
+                });
+            }
+        }
+        
+        console.log(`📁 Skopiowano folder: ${fromPath} → ${toPath}`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Błąd kopiowania folderu ${fromPath}:`, error.message);
+        return false;
+    }
+}
+
+// GŁÓWNA FUNKCJA: Wykonaj pełny backup
+async function createFullBackup() {
+    const timestamp = getBackupTimestamp();
+    const backupFolder = `/backups/backup_${timestamp}`;
+    
+    console.log(`💾 Rozpoczynam backup: ${backupFolder}`);
+    
+    const backupResults = {
+        timestamp: timestamp,
+        folder: backupFolder,
+        success: [],
+        failed: []
+    };
+    
+    try {
+        // Utwórz główny folder backupu
+        await createDropboxFolder(backupFolder);
+        
+        // Kopiuj każdy folder z BACKUP_CONFIG
+        for (const folder of BACKUP_CONFIG.folders) {
+            const sourcePath = `${DROPBOX_CONFIG.basePath}${folder}`;
+            const destPath = `${DROPBOX_CONFIG.basePath}${backupFolder}${folder}`;
+            
+            const success = await copyDropboxFolder(sourcePath, destPath);
+            
+            if (success) {
+                backupResults.success.push(folder);
+            } else {
+                backupResults.failed.push(folder);
+            }
+        }
+        
+        // Zapisz metadane backupu
+        const metadata = {
+            timestamp: timestamp,
+            createdAt: new Date().toISOString(),
+            folders: backupResults.success,
+            failed: backupResults.failed,
+            totalSize: 0 // Można dodać obliczanie rozmiaru
+        };
+        
+        await saveToDropbox(`${backupFolder}/_metadata.json`, JSON.stringify(metadata, null, 2));
+        
+        // Wyczyść stare backupy (zostaw tylko maxBackups najnowszych)
+        await cleanupOldBackups();
+        
+        // Powiadomienie Discord
+        if (discordReady && backupResults.failed.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('💾 Automatyczny Backup')
+                .setDescription(`Backup wykonany pomyślnie`)
+                .addFields(
+                    { name: 'ID', value: timestamp, inline: true },
+                    { name: 'Foldery', value: backupResults.success.length.toString(), inline: true },
+                    { name: 'Status', value: '✅ OK', inline: true }
+                )
+                .setColor(0x00ff00)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        } else if (discordReady && backupResults.failed.length > 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('⚠️ Backup z błędami')
+                .setDescription(`Częściowy backup`)
+                .addFields(
+                    { name: 'ID', value: timestamp, inline: true },
+                    { name: 'OK', value: backupResults.success.join(', ') || 'brak', inline: false },
+                    { name: 'Błędy', value: backupResults.failed.join(', '), inline: false }
+                )
+                .setColor(0xffaa00)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        }
+        
+        console.log(`✅ Backup zakończony: ${timestamp}`);
+        return backupResults;
+        
+    } catch (error) {
+        console.error('❌ Błąd podczas backupu:', error.message);
+        
+        if (discordReady) {
+            const embed = new EmbedBuilder()
+                .setTitle('🚨 Błąd Backupu')
+                .setDescription(`Nie udało się wykonać backupu\n\`${error.message}\``)
+                .setColor(0xff0000)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        }
+        
+        throw error;
+    }
+}
+
+// Wyczyść stare backupy (zostaw tylko maxBackups najnowszych)
+async function cleanupOldBackups() {
+    try {
+        const backups = await listDropboxFolder('/backups');
+        
+        // Filtruj tylko foldery backup_*
+        const backupFolders = backups
+            .filter(b => b['.tag'] === 'folder' && b.name.startsWith('backup_'))
+            .sort((a, b) => b.name.localeCompare(a.name)); // Najnowsze pierwsze
+        
+        if (backupFolders.length > BACKUP_CONFIG.maxBackups) {
+            const toDelete = backupFolders.slice(BACKUP_CONFIG.maxBackups);
+            
+            for (const folder of toDelete) {
+                await deleteFromDropbox(`/backups/${folder.name}`);
+                console.log(`🗑️ Usunięto stary backup: ${folder.name}`);
+            }
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('❌ Błąd czyszczenia starych backupów:', error.message);
+        return false;
+    }
+}
+
+// PRZYWRACANIE: Przywróć z backupu
+async function restoreFromBackup(backupTimestamp) {
+    const backupFolder = `/backups/backup_${backupTimestamp}`;
+    
+    console.log(`📥 Przywracanie z backupu: ${backupFolder}`);
+    
+    try {
+        // Sprawdź czy backup istnieje
+        const metadata = await loadFromDropbox(`${backupFolder}/_metadata.json`, null);
+        if (!metadata) {
+            throw new Error('Backup nie istnieje lub jest uszkodzony');
+        }
+        
+        // Przywróć każdy folder
+        for (const folder of BACKUP_CONFIG.folders) {
+            const sourcePath = `${backupFolder}${folder}`;
+            const destPath = folder; // np. /global
+            
+            // Usuń obecny folder (opcjonalnie - można też najpierw zrobić backup obecnego stanu)
+            // await deleteFromDropbox(destPath);
+            
+            // Kopiuj z backupu
+            await copyDropboxFolder(
+                `${DROPBOX_CONFIG.basePath}${sourcePath}`,
+                `${DROPBOX_CONFIG.basePath}${destPath}`
+            );
+        }
+        
+        // Powiadomienie
+        if (discordReady) {
+            const embed = new EmbedBuilder()
+                .setTitle('📥 Przywracanie z Backupu')
+                .setDescription(`Dane przywrócone z backupu: ${backupTimestamp}`)
+                .setColor(0x00d4ff)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        }
+        
+        console.log(`✅ Przywracanie zakończone: ${backupTimestamp}`);
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Błąd przywracania:', error.message);
+        throw error;
+    }
+}
+
+// Lista dostępnych backupów
+async function listBackups() {
+    try {
+        const backups = await listDropboxFolder('/backups');
+        
+        const backupList = [];
+        for (const folder of backups.filter(b => b['.tag'] === 'folder' && b.name.startsWith('backup_'))) {
+            const metadata = await loadFromDropbox(`/backups/${folder.name}/_metadata.json`, null);
+            if (metadata) {
+                backupList.push({
+                    id: folder.name.replace('backup_', ''),
+                    timestamp: metadata.timestamp,
+                    createdAt: metadata.createdAt,
+                    folders: metadata.folders,
+                    status: metadata.failed?.length > 0 ? 'partial' : 'complete'
+                });
+            }
+        }
+        
+        return backupList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    } catch (error) {
+        console.error('❌ Błąd listowania backupów:', error.message);
+        return [];
+    }
+}
+
+// === AUTOMATYCZNY BACKUP (inicjalizacja) ===
+
+let backupInterval = null;
+
+function startAutomaticBackup() {
+    if (backupInterval) {
+        clearInterval(backupInterval);
+    }
+    
+    console.log(`🔄 Automatyczny backup co ${BACKUP_CONFIG.interval/60000} minut`);
+    
+    // Pierwszy backup po 5 minutach od startu
+    setTimeout(() => {
+        createFullBackup().catch(err => console.error('Błąd pierwszego backupu:', err));
+    }, 5 * 60 * 1000);
+    
+    // Potem co godzinę
+    backupInterval = setInterval(() => {
+        createFullBackup().catch(err => console.error('Błąd automatycznego backupu:', err));
+    }, BACKUP_CONFIG.interval);
+}
+
+function stopAutomaticBackup() {
+    if (backupInterval) {
+        clearInterval(backupInterval);
+        backupInterval = null;
+        console.log('🛑 Automatyczny backup zatrzymany');
+    }
+}
+
+// === ENDPOINTY BACKUP ===
+
+// Wykonaj ręczny backup
+app.post('/api/backup/create', async (req, res) => {
+    try {
+        const result = await createFullBackup();
+        res.json({
+            success: true,
+            backup: {
+                timestamp: result.timestamp,
+                folder: result.folder,
+                foldersBackedUp: result.success,
+                failed: result.failed
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Lista backupów
+app.get('/api/backup/list', async (req, res) => {
+    try {
+        const backups = await listBackups();
+        res.json({
+            success: true,
+            backups: backups,
+            total: backups.length,
+            maxKept: BACKUP_CONFIG.maxBackups
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Pobierz szczegóły backupu
+app.get('/api/backup/:timestamp', async (req, res) => {
+    try {
+        const metadata = await loadFromDropbox(`/backups/backup_${req.params.timestamp}/_metadata.json`, null);
+        
+        if (!metadata) {
+            return res.status(404).json({ error: 'Backup not found' });
+        }
+        
+        res.json({
+            success: true,
+            backup: metadata
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Przywróć z backupu (UWAGA: nadpisuje obecne dane!)
+app.post('/api/backup/restore/:timestamp', async (req, res) => {
+    try {
+        const { confirm } = req.body;
+        
+        if (!confirm || confirm !== 'RESTORE') {
+            return res.status(400).json({ 
+                error: 'Confirmation required',
+                message: 'Send {"confirm": "RESTORE"} to confirm data overwrite'
+            });
+        }
+        
+        await restoreFromBackup(req.params.timestamp);
+        
+        res.json({
+            success: true,
+            message: `Restored from backup: ${req.params.timestamp}`,
+            warning: 'Cache may need refresh - consider restarting server'
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Usuń backup
+app.delete('/api/backup/:timestamp', async (req, res) => {
+    try {
+        const success = await deleteFromDropbox(`/backups/backup_${req.params.timestamp}`);
+        
+        if (success) {
+            res.json({ success: true, message: 'Backup deleted' });
+        } else {
+            res.status(404).json({ error: 'Backup not found or could not be deleted' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Status backupu
+app.get('/api/backup/status', async (req, res) => {
+    try {
+        const backups = await listBackups();
+        const latest = backups[0];
+        
+        res.json({
+            success: true,
+            automaticBackup: backupInterval !== null,
+            intervalMinutes: BACKUP_CONFIG.interval / 60000,
+            maxBackupsKept: BACKUP_CONFIG.maxBackups,
+            totalBackups: backups.length,
+            latestBackup: latest || null,
+            nextBackup: backupInterval ? new Date(Date.now() + BACKUP_CONFIG.interval).toISOString() : null
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Odczytaj plik z Dropbox (tekstowy/JSON)
 async function loadFromDropbox(dropboxPath, defaultValue = null) {
     try {
         const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
@@ -294,6 +711,7 @@ async function loadFromDropbox(dropboxPath, defaultValue = null) {
     }
 }
 
+// Usuń plik z Dropbox
 async function deleteFromDropbox(dropboxPath) {
     try {
         const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
@@ -321,6 +739,7 @@ async function deleteFromDropbox(dropboxPath) {
     }
 }
 
+// Lista plików w folderze Dropbox
 async function listDropboxFolder(dropboxPath) {
     try {
         const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
@@ -340,6 +759,7 @@ async function listDropboxFolder(dropboxPath) {
         
         if (!response.ok) {
             if (response.status === 409) {
+                // Folder nie istnieje - utwórz go
                 await createDropboxFolder(dropboxPath);
                 return [];
             }
@@ -355,6 +775,7 @@ async function listDropboxFolder(dropboxPath) {
     }
 }
 
+// Utwórz folder w Dropbox
 async function createDropboxFolder(dropboxPath) {
     try {
         const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
@@ -385,95 +806,12 @@ async function createDropboxFolder(dropboxPath) {
     }
 }
 
-// === STAŁE LINKI DROPBOX (NIGDY NIE WYGASAJĄ) ===
-async function createPermanentDropboxLink(dropboxPath) {
+// Zapisz binarny plik (obraz) do Dropbox
+async function saveBinaryToDropbox(dropboxPath, buffer, mimeType) {
     try {
         const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
         
-        console.log(`🔗 Tworzenie stałego linku dla: ${fullPath}`);
-        
-        const existingLinks = await listSharedLinks(fullPath);
-        if (existingLinks.length > 0) {
-            const link = existingLinks[0].url.replace('?dl=0', '?dl=1');
-            console.log(`✅ Znaleziono istniejący stały link`);
-            return link;
-        }
-        
-        const response = await dropboxApiRequest('/sharing/create_shared_link_with_settings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                path: fullPath,
-                settings: {
-                    requested_visibility: 'public',
-                    audience: 'public',
-                    access: 'viewer'
-                }
-            })
-        });
-        
-        if (!response.ok) {
-            if (response.status === 409) {
-                const errorData = await response.json();
-                if (errorData.error?.['.tag'] === 'shared_link_already_exists') {
-                    const links = await listSharedLinks(fullPath);
-                    if (links.length > 0) {
-                        const link = links[0].url.replace('?dl=0', '?dl=1');
-                        console.log(`✅ Link już istniał, zwracam istniejący`);
-                        return link;
-                    }
-                }
-                throw new Error(`Dropbox shared link error: ${JSON.stringify(errorData)}`);
-            }
-            const error = await response.text();
-            throw new Error(`Dropbox shared link error: ${error}`);
-        }
-        
-        const data = await response.json();
-        const directLink = data.url.replace('?dl=0', '?dl=1');
-        
-        console.log(`✅ Utworzono nowy stały link`);
-        return directLink;
-        
-    } catch (error) {
-        console.error(`❌ Błąd tworzenia stałego linku (${dropboxPath}):`, error.message);
-        throw error;
-    }
-}
-
-async function listSharedLinks(dropboxPath) {
-    try {
-        const response = await dropboxApiRequest('/sharing/list_shared_links', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                path: dropboxPath,
-                direct_only: true
-            })
-        });
-        
-        if (!response.ok) {
-            return [];
-        }
-        
-        const data = await response.json();
-        return data.links || [];
-        
-    } catch (error) {
-        console.error('❌ Błąd listowania linków:', error.message);
-        return [];
-    }
-}
-
-async function saveBinaryToDropboxWithPermanentLink(dropboxPath, buffer, mimeType) {
-    try {
-        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
-        
-        const uploadResponse = await dropboxApiRequest('/files/upload', {
+        const response = await dropboxApiRequest('/files/upload', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/octet-stream',
@@ -487,201 +825,149 @@ async function saveBinaryToDropboxWithPermanentLink(dropboxPath, buffer, mimeTyp
             body: buffer
         });
         
-        if (!uploadResponse.ok) {
-            const error = await uploadResponse.text();
+        if (!response.ok) {
+            const error = await response.text();
             throw new Error(`Dropbox upload error: ${error}`);
         }
         
-        console.log(`✅ Zapisano plik do Dropbox: ${dropboxPath}`);
-        
-        const permanentLink = await createPermanentDropboxLink(dropboxPath);
-        
-        return {
-            uploadResult: await uploadResponse.json(),
-            permanentUrl: permanentLink
-        };
-        
+        const result = await response.json();
+        console.log(`✅ Zapisano binarny plik do Dropbox: ${dropboxPath}`);
+        return result;
     } catch (error) {
-        console.error(`❌ Błąd zapisu pliku (${dropboxPath}):`, error.message);
+        console.error(`❌ Błąd zapisu binarnego do Dropbox (${dropboxPath}):`, error.message);
         throw error;
     }
 }
 
-// === BACKUP SYSTEM ===
-const BACKUP_CONFIG = {
-    interval: 60 * 60 * 1000,
-    maxBackups: 24,
-    folders: ['/global', '/users', '/chats']
-};
-
-function getBackupTimestamp() {
-    const now = new Date();
-    return `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
-}
-
-async function copyDropboxFolder(fromPath, toPath) {
+// Pobierz URL do pliku w Dropbox
+async function getDropboxTemporaryLink(dropboxPath) {
     try {
-        await createDropboxFolder(toPath.replace(DROPBOX_CONFIG.basePath, ''));
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
         
-        const files = await listDropboxFolder(fromPath.replace(DROPBOX_CONFIG.basePath, ''));
+        const response = await dropboxApiRequest('/files/get_temporary_link', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: fullPath
+            })
+        });
         
-        for (const file of files) {
-            const fileName = file.name;
-            const sourcePath = file.path_display;
-            const destPath = `${toPath}/${fileName}`;
-            
-            if (file['.tag'] === 'folder') {
-                await copyDropboxFolder(sourcePath, destPath);
-            } else {
-                await dropboxApiRequest('/files/copy_v2', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        from_path: sourcePath,
-                        to_path: destPath,
-                        autorename: false
-                    })
-                });
-            }
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Dropbox link error: ${error}`);
         }
         
-        console.log(`📁 Skopiowano folder: ${fromPath} → ${toPath}`);
-        return true;
+        const data = await response.json();
+        return data.link;
     } catch (error) {
-        console.error(`❌ Błąd kopiowania folderu ${fromPath}:`, error.message);
-        return false;
+        console.error(`❌ Błąd pobierania linku Dropbox (${dropboxPath}):`, error.message);
+        return null;
     }
 }
 
-async function createFullBackup() {
-    const timestamp = getBackupTimestamp();
-    const backupFolder = `/backups/backup_${timestamp}`;
+// Inicjalizacja struktury folderów w Dropbox
+async function initDropboxStructure() {
+    console.log('📁 Inicjalizacja struktury folderów w Dropbox...');
     
-    console.log(`💾 Rozpoczynam backup: ${backupFolder}`);
+    const folders = [
+        '/global',
+        '/users',
+        '/chats',
+        '/screenshots',
+        '/icons',
+        '/temp',
+        '/backups'
+    ];
     
-    const backupResults = {
-        timestamp: timestamp,
-        folder: backupFolder,
-        success: [],
-        failed: []
+    for (const folder of folders) {
+        try {
+            await createDropboxFolder(folder);
+        } catch (err) {
+            console.error(`❌ Nie udało się utworzyć folderu ${folder}:`, err.message);
+            // Kontynuuj mimo błędu
+        }
+    }
+    
+    // Inicjalizacja domyślnych plików globalnych
+    const globalFiles = {
+        'users.json': {},
+        'games.json': [],
+        'comments.json': {},
+        'ratings.json': {},
+        'screenshots.json': [],
+        'icons.json': []
     };
     
-    try {
-        await createDropboxFolder(backupFolder);
-        
-        for (const folder of BACKUP_CONFIG.folders) {
-            const sourcePath = `${DROPBOX_CONFIG.basePath}${folder}`;
-            const destPath = `${DROPBOX_CONFIG.basePath}${backupFolder}${folder}`;
-            
-            const success = await copyDropboxFolder(sourcePath, destPath);
-            
-            if (success) {
-                backupResults.success.push(folder);
-            } else {
-                backupResults.failed.push(folder);
+    for (const [filename, defaultData] of Object.entries(globalFiles)) {
+        try {
+            const existing = await loadFromDropbox(`/global/${filename}`, null);
+            if (existing === null) {
+                await saveToDropbox(`/global/${filename}`, JSON.stringify(defaultData, null, 2));
+                console.log(`  📝 Utworzono w Dropbox: ${filename}`);
             }
+        } catch (err) {
+            console.error(`❌ Błąd tworzenia pliku ${filename}:`, err.message);
         }
-        
-        const metadata = {
-            timestamp: timestamp,
-            createdAt: new Date().toISOString(),
-            folders: backupResults.success,
-            failed: backupResults.failed,
-            totalSize: 0
-        };
-        
-        await saveToDropbox(`${backupFolder}/_metadata.json`, JSON.stringify(metadata, null, 2));
-        
-        await cleanupOldBackups();
-        
-        if (discordReady && backupResults.failed.length === 0) {
-            const embed = new EmbedBuilder()
-                .setTitle('💾 Automatyczny Backup')
-                .setDescription(`Backup wykonany pomyślnie`)
-                .addFields(
-                    { name: 'ID', value: timestamp, inline: true },
-                    { name: 'Foldery', value: backupResults.success.length.toString(), inline: true },
-                    { name: 'Status', value: '✅ OK', inline: true }
-                )
-                .setColor(0x00ff00)
-                .setTimestamp();
-            
-            await sendDiscordNotification(embed);
-        }
-        
-        console.log(`✅ Backup zakończony: ${timestamp}`);
-        return backupResults;
-        
-    } catch (error) {
-        console.error('❌ Błąd podczas backupu:', error.message);
-        
-        if (discordReady) {
-            const embed = new EmbedBuilder()
-                .setTitle('🚨 Błąd Backupu')
-                .setDescription(`Nie udało się wykonać backupu\n\`${error.message}\``)
-                .setColor(0xff0000)
-                .setTimestamp();
-            
-            await sendDiscordNotification(embed);
-        }
-        
-        throw error;
-    }
-}
-
-async function cleanupOldBackups() {
-    try {
-        const backups = await listDropboxFolder('/backups');
-        
-        const backupFolders = backups
-            .filter(b => b['.tag'] === 'folder' && b.name.startsWith('backup_'))
-            .sort((a, b) => b.name.localeCompare(a.name));
-        
-        if (backupFolders.length > BACKUP_CONFIG.maxBackups) {
-            const toDelete = backupFolders.slice(BACKUP_CONFIG.maxBackups);
-            
-            for (const folder of toDelete) {
-                await deleteFromDropbox(`/backups/${folder.name}`);
-                console.log(`🗑️ Usunięto stary backup: ${folder.name}`);
-            }
-        }
-        
-        return true;
-    } catch (error) {
-        console.error('❌ Błąd czyszczenia starych backupów:', error.message);
-        return false;
-    }
-}
-
-let backupInterval = null;
-
-function startAutomaticBackup() {
-    if (backupInterval) {
-        clearInterval(backupInterval);
     }
     
-    console.log(`🔄 Automatyczny backup co ${BACKUP_CONFIG.interval/60000} minut`);
-    
-    setTimeout(() => {
-        createFullBackup().catch(err => console.error('Błąd pierwszego backupu:', err));
-    }, 5 * 60 * 1000);
-    
-    backupInterval = setInterval(() => {
-        createFullBackup().catch(err => console.error('Błąd automatycznego backupu:', err));
-    }, BACKUP_CONFIG.interval);
+    console.log('✅ Struktura Dropbox gotowa');
 }
 
-function stopAutomaticBackup() {
-    if (backupInterval) {
-        clearInterval(backupInterval);
-        backupInterval = null;
-        console.log('🛑 Automatyczny backup zatrzymany');
+// Ścieżki lokalne (tylko dla tymczasowych uploadów)
+const PATHS = {
+    base: BASE_PATH,
+    temp: path.join(BASE_PATH, 'temp')
+};
+
+// Middleware CORS
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+}));
+
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
     }
-}
+    next();
+});
 
-// === DISCORD INTEGRATION ===
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Logowanie requestów
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} | ${req.method} ${req.path} | IP: ${req.ip}`);
+    next();
+});
+
+// Konfiguracja multer dla tymczasowego zapisu plików
+const storage = multer.memoryStorage();
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Nieprawidłowy format pliku. Dozwolone: JPG, PNG, GIF, WEBP'), false);
+        }
+    }
+});
+
+// Discord Client
 const discordClient = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -692,6 +978,170 @@ const discordClient = new Client({
 
 let discordReady = false;
 let isShuttingDown = false;
+
+// Cache w pamięci
+const gamesCache = new Map();
+const connectedUsers = new Map();
+const userSockets = new Map();
+const typingUsers = new Map();
+
+// === FUNKCJE STORAGE (DROPBOX) ===
+
+async function initStorage() {
+    console.log('📁 Inicjalizacja storage (Dropbox)...');
+    
+    try {
+        await fs.mkdir(PATHS.temp, { recursive: true });
+        await initDropboxStructure();
+        console.log('✅ Storage gotowy (Dropbox)');
+        return true;
+    } catch (error) {
+        console.error('❌ Błąd inicjalizacji storage:', error);
+        await sendEmergencyNotification(`🚨 Błąd inicjalizacji Dropbox: ${error.message}`);
+        return false;
+    }
+}
+
+// === FUNKCJE UŻYTKOWNIKÓW (DROPBOX) ===
+
+async function ensureUserDir(username) {
+    try {
+        await createDropboxFolder(`/users/${username}`);
+        await createDropboxFolder(`/users/${username}/library`);
+        await createDropboxFolder(`/users/${username}/friends`);
+        await createDropboxFolder(`/users/${username}/settings`);
+    } catch (err) {
+        // Folder może już istnieć
+    }
+    return `/users/${username}`;
+}
+
+async function saveUserFile(username, filename, data) {
+    await ensureUserDir(username);
+    const dropboxPath = `/users/${username}/${filename}`;
+    await saveToDropbox(dropboxPath, JSON.stringify(data, null, 2));
+    return dropboxPath;
+}
+
+async function loadUserFile(username, filename, defaultData = {}) {
+    const dropboxPath = `/users/${username}/${filename}`;
+    return await loadFromDropbox(dropboxPath, defaultData);
+}
+
+// === FUNKCJE GLOBALNE (DROPBOX) ===
+
+async function saveGlobalFile(filename, data) {
+    const dropboxPath = `/global/${filename}`;
+    await saveToDropbox(dropboxPath, JSON.stringify(data, null, 2));
+    
+    if (discordReady && ['users.json', 'games.json'].includes(filename)) {
+        try {
+            await backupToGlobalData(filename, data);
+        } catch (err) {
+            console.log('⚠️ Backup na Discord nie powiódł się:', err.message);
+        }
+    }
+    
+    return dropboxPath;
+}
+
+async function loadGlobalFile(filename, defaultData = {}) {
+    const dropboxPath = `/global/${filename}`;
+    let data = await loadFromDropbox(dropboxPath, null);
+    
+    if (data === null && discordReady) {
+        try {
+            data = await restoreFromGlobalData(filename);
+            if (data) {
+                await saveToDropbox(dropboxPath, JSON.stringify(data, null, 2));
+                console.log(`📥 Przywrócono ${filename} z backupu Discord`);
+            }
+        } catch (err) {
+            console.log('⚠️ Przywracanie z Discord nie powiodło się:', err.message);
+        }
+    }
+    
+    return data !== null ? data : defaultData;
+}
+
+// === FUNKCJE CZATU (DROPBOX) ===
+
+async function saveChatFile(user1, user2, data) {
+    const sorted = [user1, user2].sort();
+    const chatId = `${sorted[0]}_and_${sorted[1]}`;
+    const dropboxPath = `/chats/${chatId}.json`;
+    await saveToDropbox(dropboxPath, JSON.stringify(data, null, 2));
+    return chatId;
+}
+
+async function loadChatFile(user1, user2) {
+    const sorted = [user1, user2].sort();
+    const chatId = `${sorted[0]}_and_${sorted[1]}`;
+    const dropboxPath = `/chats/${chatId}.json`;
+    return await loadFromDropbox(dropboxPath, { participants: [user1, user2], messages: [] });
+}
+
+// === BACKUP AWARYJNY NA DISCORD ===
+
+async function backupToGlobalData(filename, data) {
+    if (!discordReady) return;
+    
+    try {
+        const channel = await discordClient.channels.fetch(GLOBAL_DATA_CHANNEL_ID);
+        if (!channel) return;
+        
+        const messages = await channel.messages.fetch({ limit: 50 });
+        const oldMessages = messages.filter(m => 
+            m.content.includes(`[BACKUP] ${filename}`)
+        );
+        
+        for (const msg of oldMessages.values()) {
+            await msg.delete().catch(() => {});
+        }
+        
+        const { AttachmentBuilder } = require('discord.js');
+        const buffer = Buffer.from(JSON.stringify(data, null, 2));
+        const attachment = new AttachmentBuilder(buffer, { name: filename });
+        
+        await channel.send({
+            content: `[BACKUP] ${filename} | ${new Date().toISOString()}`,
+            files: [attachment]
+        });
+        
+        console.log(`💾 Backup ${filename} wysłany na Discord`);
+    } catch (error) {
+        console.error('❌ Błąd backupu Discord:', error.message);
+    }
+}
+
+async function restoreFromGlobalData(filename) {
+    if (!discordReady) return null;
+    
+    try {
+        const channel = await discordClient.channels.fetch(GLOBAL_DATA_CHANNEL_ID);
+        if (!channel) return null;
+        
+        const messages = await channel.messages.fetch({ limit: 50 });
+        const backupMsg = messages.find(m => 
+            m.content.includes(`[BACKUP] ${filename}`) &&
+            m.attachments.size > 0
+        );
+        
+        if (!backupMsg) return null;
+        
+        const attachment = backupMsg.attachments.first();
+        const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+        const response = await fetch(attachment.url);
+        const data = await response.json();
+        
+        return data;
+    } catch (error) {
+        console.error('❌ Błąd przywracania z Discord:', error.message);
+        return null;
+    }
+}
+
+// === POWIADOMIENIA DISCORD ===
 
 async function sendDiscordNotification(embed) {
     if (!discordReady) {
@@ -726,123 +1176,21 @@ async function sendEmergencyNotification(message) {
     }
 }
 
-// === MIDDLEWARE - POPRAWIONE CORS ===
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    credentials: true,
-    preflightContinue: false,
-    optionsSuccessStatus: 204
-}));
+// === WEBSOCKET ===
 
-// Dodatkowe nagłówki CORS dla wszystkich odpowiedzi
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(204);
-    }
-    next();
-});
-
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} | ${req.method} ${req.path} | IP: ${req.ip}`);
-    next();
-});
-
-// === MULTER CONFIG ===
-const storage = multer.memoryStorage();
-const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (allowedTypes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Nieprawidłowy format pliku. Dozwolone: JPG, PNG, GIF, WEBP'), false);
-        }
-    }
-});
-
-// === CACHE ===
-const gamesCache = new Map();
-const connectedUsers = new Map();
-const userSockets = new Map();
-
-// === STORAGE FUNCTIONS ===
-async function initStorage() {
-    console.log('📁 Inicjalizacja storage (Dropbox)...');
-    
-    try {
-        await fs.mkdir(path.join(BASE_PATH, 'temp'), { recursive: true });
-        
-        const folders = ['/global', '/users', '/chats', '/screenshots', '/icons', '/temp', '/backups'];
-        for (const folder of folders) {
-            try {
-                await createDropboxFolder(folder);
-            } catch (err) {
-                console.error(`❌ Nie udało się utworzyć folderu ${folder}:`, err.message);
-            }
-        }
-        
-        const globalFiles = {
-            'users.json': {},
-            'games.json': [],
-            'comments.json': {},
-            'ratings.json': {},
-            'screenshots.json': [],
-            'icons.json': []
-        };
-        
-        for (const [filename, defaultData] of Object.entries(globalFiles)) {
-            try {
-                const existing = await loadFromDropbox(`/global/${filename}`, null);
-                if (existing === null) {
-                    await saveToDropbox(`/global/${filename}`, JSON.stringify(defaultData, null, 2));
-                    console.log(`  📝 Utworzono w Dropbox: ${filename}`);
-                }
-            } catch (err) {
-                console.error(`❌ Błąd tworzenia pliku ${filename}:`, err.message);
-            }
-        }
-        
-        console.log('✅ Storage gotowy (Dropbox)');
-        return true;
-    } catch (error) {
-        console.error('❌ Błąd inicjalizacji storage:', error);
-        await sendEmergencyNotification(`🚨 Błąd inicjalizacji Dropbox: ${error.message}`);
-        return false;
-    }
-}
-
-async function loadGlobalFile(filename, defaultData = {}) {
-    return await loadFromDropbox(`/global/${filename}`, defaultData);
-}
-
-async function saveGlobalFile(filename, data) {
-    await saveToDropbox(`/global/${filename}`, JSON.stringify(data, null, 2));
-    return `/global/${filename}`;
-}
-
-// === WEBSOCKET HANDLERS ===
 io.on('connection', (socket) => {
     console.log(`🔌 Nowe połączenie: ${socket.id}`);
     
     socket.on('authenticate', async (data) => {
         try {
+            console.log('🔐 Próba autentykacji:', data);
             const { token, guildId } = data;
+            
             const users = await loadGlobalFile('users.json', {});
             const user = Object.values(users).find(u => u.token === token);
             
             if (!user) {
+                console.log('❌ Autentykacja nieudana - nieprawidłowy token');
                 socket.emit('auth_error', { message: 'Invalid token' });
                 return;
             }
@@ -869,29 +1217,268 @@ io.on('connection', (socket) => {
                 guildId: socket.guildId
             });
             
+            broadcastToFriends(user.username, 'friend_status_change', {
+                username: user.username,
+                status: 'online',
+                timestamp: new Date().toISOString()
+            });
+            
+            console.log(`✅ Socket autentykowany: ${user.username}`);
+            
         } catch (error) {
+            console.error('❌ Błąd autentykacji:', error);
             socket.emit('auth_error', { message: error.message });
         }
     });
     
+    socket.on('status_change', (data) => {
+        if (!socket.authenticated) return;
+        
+        const userData = connectedUsers.get(socket.id);
+        if (!userData) return;
+        
+        userData.status = data.status;
+        userData.activity = data.activity;
+        
+        broadcastToFriends(socket.username, 'friend_status_change', {
+            username: socket.username,
+            status: data.status,
+            activity: data.activity,
+            timestamp: new Date().toISOString()
+        });
+    });
+    
+    socket.on('send_message', async (data) => {
+        if (!socket.authenticated) return;
+        
+        try {
+            const { toUser, content, tempId } = data;
+            
+            let chat = await loadChatFile(socket.username, toUser);
+            const messageData = {
+                id: crypto.randomUUID(),
+                sender: socket.username,
+                content: content.trim(),
+                timestamp: new Date().toISOString(),
+                read: false
+            };
+            
+            chat.messages.push(messageData);
+            if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
+            
+            await saveChatFile(socket.username, toUser, chat);
+            
+            socket.emit('message_sent', {
+                tempId: tempId,
+                messageId: messageData.id,
+                timestamp: messageData.timestamp,
+                toUser: toUser
+            });
+            
+            broadcastToUser(toUser, 'new_message', {
+                message: messageData,
+                fromUser: socket.username
+            });
+            
+        } catch (error) {
+            socket.emit('message_error', { tempId: data.tempId, error: error.message });
+        }
+    });
+    
+    socket.on('typing', (data) => {
+        if (!socket.authenticated) return;
+        
+        const chatId = [socket.username, data.toUser].sort().join('-');
+        if (!typingUsers.has(chatId)) {
+            typingUsers.set(chatId, new Set());
+        }
+        typingUsers.get(chatId).add(socket.username);
+        
+        broadcastToUser(data.toUser, 'typing', {
+            fromUser: socket.username,
+            chatId: chatId
+        });
+        
+        setTimeout(() => {
+            if (typingUsers.has(chatId)) {
+                typingUsers.get(chatId).delete(socket.username);
+                if (typingUsers.get(chatId).size === 0) typingUsers.delete(chatId);
+            }
+        }, 5000);
+    });
+    
+    socket.on('stop_typing', (data) => {
+        if (!socket.authenticated) return;
+        
+        const chatId = [socket.username, data.toUser].sort().join('-');
+        if (typingUsers.has(chatId)) {
+            typingUsers.get(chatId).delete(socket.username);
+            if (typingUsers.get(chatId).size === 0) typingUsers.delete(chatId);
+        }
+        
+        broadcastToUser(data.toUser, 'stop_typing', {
+            fromUser: socket.username,
+            chatId: chatId
+        });
+    });
+    
+    socket.on('friend_request_sent', async (data) => {
+        if (!socket.authenticated) return;
+        
+        try {
+            const { toUser } = data;
+            const users = await loadGlobalFile('users.json', {});
+            
+            if (!users[toUser]) {
+                socket.emit('friend_error', { message: 'User not found' });
+                return;
+            }
+            
+            const toData = await loadUserFile(toUser, 'friends/friends.json', { friends: [], pendingInvites: [] });
+            
+            const alreadyPending = toData.pendingInvites?.find(p => p.from === socket.username);
+            const alreadyFriends = toData.friends?.includes(socket.username);
+            
+            if (!alreadyPending && !alreadyFriends) {
+                if (!toData.pendingInvites) toData.pendingInvites = [];
+                toData.pendingInvites.push({
+                    from: socket.username,
+                    timestamp: new Date().toISOString()
+                });
+                
+                await saveUserFile(toUser, 'friends/friends.json', toData);
+                
+                broadcastToUser(toUser, 'friend_request', {
+                    from: socket.username,
+                    timestamp: new Date().toISOString()
+                });
+                
+                socket.emit('friend_request_sent_success', { 
+                    toUser, 
+                    timestamp: new Date().toISOString() 
+                });
+                
+                try {
+                    const embed = new EmbedBuilder()
+                        .setTitle('👥 Nowe zaproszenie')
+                        .setDescription(`**${socket.username}** → **${toUser}**`)
+                        .setColor(0x00d4ff)
+                        .setTimestamp();
+                    
+                    await sendDiscordNotification(embed);
+                } catch (err) {
+                    console.log('Powiadomienie Discord nie wysłane:', err.message);
+                }
+            } else {
+                socket.emit('friend_error', { message: 'Already pending or friends' });
+            }
+            
+        } catch (error) {
+            socket.emit('friend_error', { message: error.message });
+        }
+    });
+    
+    socket.on('friend_respond', async (data) => {
+        if (!socket.authenticated) return;
+        
+        try {
+            const { fromUser, accept } = data;
+            
+            const userData = await loadUserFile(socket.username, 'friends/friends.json', { 
+                friends: [], 
+                pendingInvites: [] 
+            });
+            
+            const fromData = await loadUserFile(fromUser, 'friends/friends.json', { 
+                friends: [], 
+                pendingInvites: [] 
+            });
+            
+            userData.pendingInvites = (userData.pendingInvites || []).filter(p => p.from !== fromUser);
+            
+            if (accept) {
+                if (!userData.friends) userData.friends = [];
+                if (!fromData.friends) fromData.friends = [];
+                
+                if (!userData.friends.includes(fromUser)) userData.friends.push(fromUser);
+                if (!fromData.friends.includes(socket.username)) fromData.friends.push(socket.username);
+                
+                await saveChatFile(socket.username, fromUser, {
+                    participants: [socket.username, fromUser],
+                    messages: []
+                });
+                
+                broadcastToUser(fromUser, 'friend_accepted', {
+                    by: socket.username,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            await saveUserFile(socket.username, 'friends/friends.json', userData);
+            await saveUserFile(fromUser, 'friends/friends.json', fromData);
+            
+        } catch (error) {
+            socket.emit('friend_error', { message: error.message });
+        }
+    });
+    
     socket.on('disconnect', (reason) => {
+        console.log(`🔌 Rozłączenie: ${socket.id}, powód: ${reason}`);
+        
         if (socket.authenticated && socket.username) {
             const sockets = userSockets.get(socket.username);
             if (sockets) {
                 sockets.delete(socket.id);
                 if (sockets.size === 0) {
                     userSockets.delete(socket.username);
+                    broadcastToFriends(socket.username, 'friend_status_change', {
+                        username: socket.username,
+                        status: 'offline',
+                        timestamp: new Date().toISOString()
+                    });
                 }
             }
         }
         connectedUsers.delete(socket.id);
     });
+    
+    socket.on('ping', () => socket.emit('pong'));
 });
 
-// === API ROUTES - POPRAWIONE ===
+// Funkcje broadcast
+function broadcastToUser(username, event, data) {
+    const sockets = userSockets.get(username);
+    if (!sockets) return;
+    
+    sockets.forEach(socketId => {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) socket.emit(event, data);
+    });
+}
 
-// Health Check
+function broadcastToFriends(username, event, data) {
+    loadUserFile(username, 'friends/friends.json', { friends: [] }).then(friendsData => {
+        (friendsData.friends || []).forEach(friend => {
+            broadcastToUser(friend, event, { ...data, friendUsername: username });
+        });
+    }).catch(err => console.error('Błąd broadcastToFriends:', err));
+}
+
+function broadcastToGuild(guildId, event, data) {
+    connectedUsers.forEach((userData, socketId) => {
+        if (userData.guildId === guildId) {
+            const socket = io.sockets.sockets.get(socketId);
+            if (socket) socket.emit(event, data);
+        }
+    });
+}
+
+// === ENDPOINTY HTTP ===
+
+// Health check
 app.get('/health', async (req, res) => {
+    const username = req.query.username;
+    
     const response = {
         status: 'OK',
         discord: discordReady,
@@ -906,27 +1493,140 @@ app.get('/health', async (req, res) => {
             authenticatedUsers: connectedUsers.size
         },
         timestamp: new Date().toISOString(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        memory: process.memoryUsage()
     };
+
+    if (username) {
+        try {
+            const data = await loadUserFile(username, 'friends/friends.json', { pendingInvites: [] });
+            response.hasPendingInvites = (data.pendingInvites || []).length > 0;
+            response.pendingInvitesCount = (data.pendingInvites || []).length;
+        } catch (e) {
+            response.friendsError = e.message;
+        }
+    }
     
     res.json(response);
 });
 
-// === GAMES API - POPRAWIONE (obsługa zarówno /games jak i /api/games) ===
+// Test CORS
+app.get('/test', (req, res) => {
+    res.json({ 
+        message: 'CORS działa!', 
+        origin: req.headers.origin,
+        time: new Date().toISOString()
+    });
+});
 
-// Get all games - OBSŁUGA OBU ŚCIEŻEK
-app.get(['/games', '/api/games'], async (req, res) => {
+// Endpoint testowy Dropbox
+app.get('/api/dropbox/test', async (req, res) => {
+    try {
+        const response = await dropboxApiRequest('/users/get_current_account', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(null)
+        });
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Dropbox API error: ${error}`);
+        }
+        
+        const data = await response.json();
+        res.json({
+            success: true,
+            account: {
+                name: data.name.display_name,
+                email: data.email,
+                account_id: data.account_id
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ręczne odświeżenie tokena
+app.post('/api/dropbox/refresh', async (req, res) => {
+    try {
+        await dropboxTokenManager.refreshAccessToken();
+        res.json({
+            success: true,
+            message: 'Token odświeżony',
+            expiresAt: new Date(dropboxTokenManager.expiresAt).toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Lista plików w Dropbox (debug)
+app.get('/api/dropbox/list/*', async (req, res) => {
+    try {
+        const folderPath = '/' + req.params[0];
+        const files = await listDropboxFolder(folderPath);
+        res.json({
+            success: true,
+            path: folderPath,
+            files: files.map(f => ({
+                name: f.name,
+                path: f.path_display,
+                size: f.size,
+                modified: f.server_modified
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Serwowanie plików statycznych
+app.get('/', async (req, res) => {
+    try {
+        const indexPath = path.join(__dirname, 'index.html');
+        const html = await fs.readFile(indexPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch {
+        res.json({ 
+            message: 'Nebula Game Server',
+            status: 'online',
+            discord: discordReady,
+            dropbox: !!dropboxTokenManager.accessToken,
+            endpoints: ['/games', '/api/auth/login', '/api/auth/register', '/health']
+        });
+    }
+});
+
+['admin', 'game', 'login', 'friends', 'library'].forEach(page => {
+    app.get(`/${page}.html`, async (req, res) => {
+        try {
+            const filePath = path.join(__dirname, `${page}.html`);
+            const html = await fs.readFile(filePath, 'utf-8');
+            res.setHeader('Content-Type', 'text/html');
+            res.send(html);
+        } catch (error) {
+            res.status(500).send(`Błąd: ${error.message}`);
+        }
+    });
+});
+
+// === GRY ===
+
+app.get('/games', async (req, res) => {
     try {
         const games = await loadGlobalFile('games.json', []);
-        gamesCache.set('all', games);
+        gamesCache.set(DEFAULT_GUILD_ID, games);
         res.json(games);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// Get single game - OBSŁUGA OBU ŚCIEŻEK
-app.get(['/games/:id', '/api/games/:id'], async (req, res) => {
+app.get('/games/:id', async (req, res) => {
     try {
         const games = await loadGlobalFile('games.json', []);
         const game = games.find(g => g.id === req.params.id);
@@ -937,29 +1637,26 @@ app.get(['/games/:id', '/api/games/:id'], async (req, res) => {
     }
 });
 
-// Create game - OBSŁUGA OBU ŚCIEŻEK
-app.post(['/api/games', '/games'], async (req, res) => {
+app.post('/api/games', async (req, res) => {
     try {
-        const { 
-            name, description, developer, price, icon, iconUrl, color,
-            pegi, download_url, size, requirements, screenshots, genre,
-            releaseDate, publisher, version, language 
-        } = req.body;
+        const { name, description, developer, price, icon, iconUrl, color, 
+                pegi, download_url, size, requirements, screenshots, genre, 
+                releaseDate, publisher, version, language } = req.body;
         
         if (!name) return res.status(400).json({ error: 'Name required' });
         
         const gameId = crypto.randomUUID();
         const gameData = {
             id: gameId,
-            name,
-            description: description || '',
+            name, 
+            description: description || '', 
             developer: developer || 'Unknown',
-            price: price || 0,
-            icon: icon || '🎮',
+            price: price || 0, 
+            icon: icon || '🎮', 
             iconUrl: iconUrl || null,
             color: color || '#00d4ff',
-            pegi: pegi || 12,
-            download_url: download_url || null,
+            pegi: pegi || 12, 
+            download_url: download_url || null, 
             size: size || null,
             requirements: requirements || { min: {}, rec: {} },
             screenshots: screenshots || [],
@@ -976,26 +1673,29 @@ app.post(['/api/games', '/games'], async (req, res) => {
         games.push(gameData);
         
         await saveGlobalFile('games.json', games);
-        gamesCache.set('all', games);
+        gamesCache.set(DEFAULT_GUILD_ID, games);
         
-        if (discordReady) {
-            try {
-                const embed = new EmbedBuilder()
-                    .setTitle(gameData.price === 0 ? '🆓 Nowa darmowa gra!' : '💰 Nowa gra!')
-                    .setDescription(`**${gameData.name}**`)
-                    .addFields(
-                        { name: 'Dev', value: gameData.developer, inline: true },
-                        { name: 'Cena', value: gameData.price === 0 ? 'DARMOWE' : `${gameData.price}zł`, inline: true },
-                        { name: 'Gatunek', value: gameData.genre, inline: true }
-                    )
-                    .setColor(parseInt(gameData.color.replace('#', ''), 16))
-                    .setTimestamp();
-                
-                await sendDiscordNotification(embed);
-            } catch (err) {
-                console.log('Powiadomienie Discord nie wysłane:', err.message);
-            }
+        try {
+            const embed = new EmbedBuilder()
+                .setTitle(gameData.price === 0 ? '🆓 Nowa darmowa gra!' : '💰 Nowa gra!')
+                .setDescription(`**${gameData.name}**`)
+                .addFields(
+                    { name: 'Dev', value: gameData.developer, inline: true },
+                    { name: 'Cena', value: gameData.price === 0 ? 'DARMOWE' : `${gameData.price}zł`, inline: true },
+                    { name: 'Gatunek', value: gameData.genre, inline: true }
+                )
+                .setColor(parseInt(gameData.color.replace('#', ''), 16))
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        } catch (err) {
+            console.log('Powiadomienie Discord nie wysłane:', err.message);
         }
+        
+        broadcastToGuild(DEFAULT_GUILD_ID, 'new_game', {
+            game: gameData,
+            timestamp: new Date().toISOString()
+        });
         
         res.json({ success: true, game: gameData });
         
@@ -1004,25 +1704,19 @@ app.post(['/api/games', '/games'], async (req, res) => {
     }
 });
 
-// Update game - OBSŁUGA OBU ŚCIEŻEK
-app.put(['/api/games/:id', '/games/:id'], async (req, res) => {
+app.put('/api/games/:id', async (req, res) => {
     try {
         const games = await loadGlobalFile('games.json', []);
+        const existing = games.find(g => g.id === req.params.id);
+        
+        if (!existing) return res.status(404).json({ error: 'Game not found' });
+        
+        const updated = { ...existing, ...req.body, updatedAt: new Date().toISOString() };
         const index = games.findIndex(g => g.id === req.params.id);
-        
-        if (index === -1) return res.status(404).json({ error: 'Game not found' });
-        
-        const updated = { 
-            ...games[index], 
-            ...req.body, 
-            id: req.params.id,
-            updatedAt: new Date().toISOString() 
-        };
-        
         games[index] = updated;
         
         await saveGlobalFile('games.json', games);
-        gamesCache.set('all', games);
+        gamesCache.set(DEFAULT_GUILD_ID, games);
         
         res.json({ success: true, game: updated });
         
@@ -1031,32 +1725,704 @@ app.put(['/api/games/:id', '/games/:id'], async (req, res) => {
     }
 });
 
-// Delete game - OBSŁUGA OBU ŚCIEŻEK
-app.delete(['/api/games/:id', '/games/:id'], async (req, res) => {
+app.delete('/api/games/:id', async (req, res) => {
     try {
         let games = await loadGlobalFile('games.json', []);
         const initialLength = games.length;
         
         games = games.filter(g => g.id !== req.params.id);
         
-        if (games.length === initialLength) {
-            return res.status(404).json({ error: 'Game not found' });
+        if (games.length < initialLength) {
+            await saveGlobalFile('games.json', games);
+            gamesCache.set(DEFAULT_GUILD_ID, games);
+            res.json({ success: true, message: 'Deleted' });
+        } else {
+            res.status(404).json({ success: false, message: 'Not found' });
         }
-        
-        await saveGlobalFile('games.json', games);
-        gamesCache.set('all', games);
-        
-        res.json({ success: true, message: 'Game deleted' });
         
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// === FILE UPLOAD API (STAŁE LINKI) ===
+// === AUTH ===
 
-// Upload icon - OBSŁUGA OBU ŚCIEŻEK
-app.post(['/api/upload/icon', '/upload/icon'], upload.single('icon'), async (req, res) => {
+function hashPassword(password) {
+    return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+function generateToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+app.post('/api/auth/register', async (req, res) => {
+    console.log('📝 Próba rejestracji:', req.body);
+    
+    try {
+        const { username, password, email } = req.body;
+        
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password required' });
+        }
+        
+        const users = await loadGlobalFile('users.json', {});
+        
+        if (users[username]) {
+            return res.status(409).json({ error: 'User exists' });
+        }
+        
+        const token = generateToken();
+        users[username] = {
+            id: crypto.randomUUID(),
+            username,
+            email: email || '',
+            passwordHash: hashPassword(password),
+            token,
+            createdAt: new Date().toISOString()
+        };
+        
+        await saveGlobalFile('users.json', users);
+        await ensureUserDir(username);
+        await saveUserFile(username, 'library/library.json', { games: [] });
+        await saveUserFile(username, 'friends/friends.json', { friends: [], pendingInvites: [] });
+        
+        console.log('✅ Użytkownik zarejestrowany:', username);
+        
+        try {
+            const embed = new EmbedBuilder()
+                .setTitle('👤 Nowy użytkownik')
+                .setDescription(`**${username}** dołączył do systemu!`)
+                .setColor(0x00ff88)
+                .setTimestamp();
+            
+            await sendDiscordNotification(embed);
+        } catch (notifyErr) {
+            console.log('ℹ️ Powiadomienie Discord nie wysłane:', notifyErr.message);
+        }
+        
+        res.json({ success: true, token, userId: users[username].id });
+        
+    } catch (error) {
+        console.error('❌ Błąd rejestracji:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    console.log('🔑 Próba logowania:', req.body.username);
+    
+    try {
+        const { username, password } = req.body;
+        const users = await loadGlobalFile('users.json', {});
+        
+        const user = users[username];
+        if (!user || user.passwordHash !== hashPassword(password)) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        
+        const token = generateToken();
+        user.token = token;
+        user.lastLogin = new Date().toISOString();
+        
+        await saveGlobalFile('users.json', users);
+        
+        const friendsData = await loadUserFile(username, 'friends/friends.json', { pendingInvites: [] });
+        
+        console.log('✅ Zalogowano:', username);
+        
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                hasPendingInvites: (friendsData.pendingInvites || []).length > 0
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Błąd logowania:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/auth/verify', async (req, res) => {
+    try {
+        const auth = req.headers.authorization;
+        if (!auth?.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'No token' });
+        }
+        
+        const token = auth.substring(7);
+        const users = await loadGlobalFile('users.json', {});
+        
+        const user = Object.values(users).find(u => u.token === token);
+        if (!user) return res.status(401).json({ error: 'Invalid token' });
+        
+        const friendsData = await loadUserFile(user.username, 'friends/friends.json', { pendingInvites: [] });
+        
+        res.json({
+            valid: true,
+            userId: user.id,
+            username: user.username,
+            hasPendingInvites: (friendsData.pendingInvites || []).length > 0
+        });
+        
+    } catch (error) {
+        res.status(403).json({ error: error.message });
+    }
+});
+
+// === ZNAJOMI ===
+
+app.get('/api/friends/:username', async (req, res) => {
+    try {
+        const data = await loadUserFile(req.params.username, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
+        
+        const users = await loadGlobalFile('users.json', {});
+        
+        const friends = (data.friends || []).map(name => ({
+            username: name,
+            status: userSockets.has(name) ? 'online' : 'offline',
+            lastSeen: users[name]?.lastLogin
+        }));
+        
+        res.json({
+            friends,
+            pendingInvites: data.pendingInvites || []
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/friends/add', async (req, res) => {
+    try {
+        const { fromUser, toUser } = req.body;
+        const users = await loadGlobalFile('users.json', {});
+        
+        if (!users[toUser]) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const toData = await loadUserFile(toUser, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
+        
+        const alreadyPending = toData.pendingInvites?.find(p => p.from === fromUser);
+        const alreadyFriends = toData.friends?.includes(fromUser);
+        
+        if (!alreadyPending && !alreadyFriends) {
+            if (!toData.pendingInvites) toData.pendingInvites = [];
+            toData.pendingInvites.push({
+                from: fromUser,
+                timestamp: new Date().toISOString()
+            });
+            
+            await saveUserFile(toUser, 'friends/friends.json', toData);
+            
+            broadcastToUser(toUser, 'friend_request', {
+                from: fromUser,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        res.json({ success: true });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/friends/respond', async (req, res) => {
+    try {
+        const { username, fromUser, accept } = req.body;
+        
+        const userData = await loadUserFile(username, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
+        
+        const fromData = await loadUserFile(fromUser, 'friends/friends.json', { 
+            friends: [], 
+            pendingInvites: [] 
+        });
+        
+        userData.pendingInvites = (userData.pendingInvites || []).filter(p => p.from !== fromUser);
+        
+        if (accept) {
+            if (!userData.friends) userData.friends = [];
+            if (!fromData.friends) fromData.friends = [];
+            
+            if (!userData.friends.includes(fromUser)) userData.friends.push(fromUser);
+            if (!fromData.friends.includes(username)) fromData.friends.push(username);
+            
+            await saveChatFile(username, fromUser, {
+                participants: [username, fromUser],
+                messages: []
+            });
+            
+            broadcastToUser(fromUser, 'friend_accepted', {
+                by: username,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        await saveUserFile(username, 'friends/friends.json', userData);
+        await saveUserFile(fromUser, 'friends/friends.json', fromData);
+        
+        res.json({ success: true, accepted: accept });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/friends/remove', async (req, res) => {
+    try {
+        const { username, friendName } = req.body;
+        
+        const userData = await loadUserFile(username, 'friends/friends.json', { friends: [] });
+        const friendData = await loadUserFile(friendName, 'friends/friends.json', { friends: [] });
+        
+        userData.friends = (userData.friends || []).filter(f => f !== friendName);
+        friendData.friends = (friendData.friends || []).filter(f => f !== username);
+        
+        await saveUserFile(username, 'friends/friends.json', userData);
+        await saveUserFile(friendName, 'friends/friends.json', friendData);
+        
+        res.json({ success: true });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// === CZAT ===
+
+app.get('/api/chat/:user1/:user2', async (req, res) => {
+    try {
+        const data = await loadChatFile(req.params.user1, req.params.user2);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/chat/send', async (req, res) => {
+    try {
+        const { fromUser, toUser, content } = req.body;
+        
+        let chat = await loadChatFile(fromUser, toUser);
+        
+        const messageData = {
+            id: crypto.randomUUID(),
+            sender: fromUser,
+            content: content.trim(),
+            timestamp: new Date().toISOString(),
+            read: false
+        };
+        
+        chat.messages.push(messageData);
+        if (chat.messages.length > 500) chat.messages = chat.messages.slice(-500);
+        
+        await saveChatFile(fromUser, toUser, chat);
+        
+        broadcastToUser(toUser, 'new_message', {
+            message: messageData,
+            fromUser: fromUser
+        });
+        
+        res.json({ success: true, message: messageData });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// === BIBLIOTEKA ===
+
+app.get('/api/users/:username/library', async (req, res) => {
+    try {
+        const lib = await loadUserFile(req.params.username, 'library/library.json', { games: [] });
+        const games = await loadGlobalFile('games.json', []);
+        
+        const enriched = lib.games.map(g => ({
+            ...g,
+            gameDetails: games.find(gc => gc.id === g.gameId)
+        }));
+        
+        res.json(enriched);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/users/:username/library', async (req, res) => {
+    try {
+        const { gameId } = req.body;
+        const games = await loadGlobalFile('games.json', []);
+        
+        if (!games.find(g => g.id === gameId)) {
+            return res.status(404).json({ error: 'Game not found' });
+        }
+        
+        const lib = await loadUserFile(req.params.username, 'library/library.json', { games: [] });
+        
+        if (!lib.games.find(g => g.gameId === gameId)) {
+            lib.games.push({
+                gameId,
+                addedAt: new Date().toISOString(),
+                installed: false,
+                playTime: 0
+            });
+            await saveUserFile(req.params.username, 'library/library.json', lib);
+        }
+        
+        res.json({ success: true, library: lib.games });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/users/:username/library/:gameId', async (req, res) => {
+    try {
+        const lib = await loadUserFile(req.params.username, 'library/library.json', { games: [] });
+        
+        const initialLength = lib.games.length;
+        lib.games = lib.games.filter(g => g.gameId !== req.params.gameId);
+        
+        if (lib.games.length === initialLength) {
+            return res.status(404).json({ error: 'Game not in library' });
+        }
+        
+        await saveUserFile(req.params.username, 'library/library.json', lib);
+        res.json({ success: true });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// === KOMENTARZE I OCENY ===
+
+app.get('/api/games/:gameId/comments', async (req, res) => {
+    try {
+        const allComments = await loadGlobalFile('comments.json', {});
+        const comments = allComments[req.params.gameId] || [];
+        
+        res.json({ success: true, comments, total: comments.length });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/games/:gameId/comments', async (req, res) => {
+    try {
+        const { username, content, rating } = req.body;
+        
+        const users = await loadGlobalFile('users.json', {});
+        const user = users[username];
+        const authHeader = req.headers.authorization;
+        
+        if (!user || !authHeader?.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        const comment = {
+            id: crypto.randomUUID(),
+            username,
+            content: content.trim(),
+            rating: rating || null,
+            createdAt: new Date().toISOString(),
+            likes: 0,
+            dislikes: 0
+        };
+        
+        const allComments = await loadGlobalFile('comments.json', {});
+        if (!allComments[req.params.gameId]) allComments[req.params.gameId] = [];
+        
+        allComments[req.params.gameId].unshift(comment);
+        await saveGlobalFile('comments.json', allComments);
+        
+        try {
+            const games = await loadGlobalFile('games.json', []);
+            const game = games.find(g => g.id === req.params.gameId);
+            
+            if (game) {
+                const embed = new EmbedBuilder()
+                    .setTitle('💬 Nowy komentarz')
+                    .setDescription(`**${username}** skomentował **${game.name}**`)
+                    .addFields({ 
+                        name: 'Komentarz', 
+                        value: content.substring(0, 100) + (content.length > 100 ? '...' : '') 
+                    })
+                    .setColor(0x00d4ff)
+                    .setTimestamp();
+                
+                await sendDiscordNotification(embed);
+            }
+        } catch (err) {
+            console.log('Powiadomienie Discord nie wysłane:', err.message);
+        }
+        
+        broadcastToGuild(DEFAULT_GUILD_ID, 'new_comment', {
+            gameId: req.params.gameId,
+            comment: comment
+        });
+        
+        res.json({ success: true, comment });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/games/:gameId/comments/:commentId', async (req, res) => {
+    try {
+        const { username } = req.body;
+        
+        const users = await loadGlobalFile('users.json', {});
+        const user = users[username];
+        const authHeader = req.headers.authorization;
+        
+        if (!user || !authHeader?.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        const allComments = await loadGlobalFile('comments.json', {});
+        const comments = allComments[req.params.gameId] || [];
+        const comment = comments.find(c => c.id === req.params.commentId);
+        
+        if (!comment) return res.status(404).json({ error: 'Comment not found' });
+        if (comment.username !== username) {
+            return res.status(403).json({ error: 'Can only delete your own comments' });
+        }
+        
+        allComments[req.params.gameId] = comments.filter(c => c.id !== req.params.commentId);
+        await saveGlobalFile('comments.json', allComments);
+        
+        res.json({ success: true });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/games/:gameId/rate', async (req, res) => {
+    try {
+        const { username, rating } = req.body;
+        
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ error: 'Rating must be 1-5' });
+        }
+        
+        const users = await loadGlobalFile('users.json', {});
+        const user = users[username];
+        const authHeader = req.headers.authorization;
+        
+        if (!user || !authHeader?.startsWith('Bearer ') || user.token !== authHeader.substring(7)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        const allRatings = await loadGlobalFile('ratings.json', {});
+        if (!allRatings[req.params.gameId]) allRatings[req.params.gameId] = {};
+        
+        allRatings[req.params.gameId][username] = {
+            rating,
+            ratedAt: new Date().toISOString()
+        };
+        
+        await saveGlobalFile('ratings.json', allRatings);
+        
+        const ratings = Object.values(allRatings[req.params.gameId]).map(r => r.rating);
+        const average = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+        
+        broadcastToGuild(DEFAULT_GUILD_ID, 'new_rating', {
+            gameId: req.params.gameId,
+            username,
+            rating,
+            averageRating: Math.round(average * 10) / 10,
+            totalRatings: ratings.length
+        });
+        
+        res.json({
+            success: true,
+            yourRating: rating,
+            averageRating: Math.round(average * 10) / 10,
+            totalRatings: ratings.length
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/games/:gameId/ratings', async (req, res) => {
+    try {
+        const allRatings = await loadGlobalFile('ratings.json', {});
+        const ratings = allRatings[req.params.gameId] || {};
+        
+        const values = Object.values(ratings).map(r => r.rating);
+        const average = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        
+        const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        values.forEach(r => distribution[r] = (distribution[r] || 0) + 1);
+        
+        res.json({
+            success: true,
+            averageRating: Math.round(average * 10) / 10,
+            totalRatings: values.length,
+            distribution,
+            yourRating: req.query.username ? ratings[req.query.username]?.rating : null
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// === UPLOAD PLIKÓW DO DROPBOX (STAŁE LINKI - NIGDY NIE WYGASAJĄ) ===
+
+// NOWA FUNKCJA: Utwórz STAŁY link udostępniania (nigdy nie wygasa)
+async function createPermanentDropboxLink(dropboxPath) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        console.log(`🔗 Tworzenie stałego linku dla: ${fullPath}`);
+        
+        // Najpierw sprawdź czy link już istnieje
+        const existingLinks = await listSharedLinks(fullPath);
+        if (existingLinks.length > 0) {
+            const link = existingLinks[0].url.replace('?dl=0', '?dl=1');
+            console.log(`✅ Znaleziono istniejący stały link`);
+            return link;
+        }
+        
+        // Utwórz nowy link udostępniania
+        const response = await dropboxApiRequest('/sharing/create_shared_link_with_settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: fullPath,
+                settings: {
+                    requested_visibility: 'public',
+                    audience: 'public',
+                    access: 'viewer'
+                }
+            })
+        });
+        
+        if (!response.ok) {
+            // Jeśli link już istnieje (409), pobierz go
+            if (response.status === 409) {
+                const errorData = await response.json();
+                if (errorData.error?.['.tag'] === 'shared_link_already_exists') {
+                    const links = await listSharedLinks(fullPath);
+                    if (links.length > 0) {
+                        const link = links[0].url.replace('?dl=0', '?dl=1');
+                        console.log(`✅ Link już istniał, zwracam istniejący`);
+                        return link;
+                    }
+                }
+                throw new Error(`Dropbox shared link error: ${JSON.stringify(errorData)}`);
+            }
+            const error = await response.text();
+            throw new Error(`Dropbox shared link error: ${error}`);
+        }
+        
+        const data = await response.json();
+        // Zamień na bezpośredni link do pobrania (?dl=1)
+        const directLink = data.url.replace('?dl=0', '?dl=1');
+        
+        console.log(`✅ Utworzono nowy stały link`);
+        return directLink;
+        
+    } catch (error) {
+        console.error(`❌ Błąd tworzenia stałego linku (${dropboxPath}):`, error.message);
+        throw error;
+    }
+}
+
+// NOWA FUNKCJA: Lista istniejących linków udostępniania
+async function listSharedLinks(dropboxPath) {
+    try {
+        const response = await dropboxApiRequest('/sharing/list_shared_links', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: dropboxPath,
+                direct_only: true
+            })
+        });
+        
+        if (!response.ok) {
+            return [];
+        }
+        
+        const data = await response.json();
+        return data.links || [];
+        
+    } catch (error) {
+        console.error('❌ Błąd listowania linków:', error.message);
+        return [];
+    }
+}
+
+// NOWA FUNKCJA: Zapisz plik i zwróć STAŁY link
+async function saveBinaryToDropboxWithPermanentLink(dropboxPath, buffer, mimeType) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        // 1. Zapisz plik
+        const uploadResponse = await dropboxApiRequest('/files/upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/octet-stream',
+                'Dropbox-API-Arg': JSON.stringify({
+                    path: fullPath,
+                    mode: 'overwrite',
+                    autorename: false,
+                    mute: false
+                })
+            },
+            body: buffer
+        });
+        
+        if (!uploadResponse.ok) {
+            const error = await uploadResponse.text();
+            throw new Error(`Dropbox upload error: ${error}`);
+        }
+        
+        console.log(`✅ Zapisano plik do Dropbox: ${dropboxPath}`);
+        
+        // 2. Utwórz STAŁY link (zamiast tymczasowego)
+        const permanentLink = await createPermanentDropboxLink(dropboxPath);
+        
+        return {
+            uploadResult: await uploadResponse.json(),
+            permanentUrl: permanentLink
+        };
+        
+    } catch (error) {
+        console.error(`❌ Błąd zapisu pliku (${dropboxPath}):`, error.message);
+        throw error;
+    }
+}
+
+// Upload ikony - STAŁY LINK
+app.post('/api/upload/icon', upload.single('icon'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
@@ -1067,6 +2433,7 @@ app.post(['/api/upload/icon', '/upload/icon'], upload.single('icon'), async (req
         const filename = `${iconId}${ext}`;
         const dropboxPath = `/icons/${filename}`;
         
+        // Użyj NOWEJ funkcji z permanentnym linkiem
         const result = await saveBinaryToDropboxWithPermanentLink(
             dropboxPath, 
             req.file.buffer, 
@@ -1077,8 +2444,8 @@ app.post(['/api/upload/icon', '/upload/icon'], upload.single('icon'), async (req
         icons.push({
             id: iconId,
             dropboxPath: dropboxPath,
-            url: result.permanentUrl,
-            permanentUrl: result.permanentUrl,
+            url: result.permanentUrl, // STAŁY LINK - nigdy nie wygasa!
+            permanentUrl: result.permanentUrl, // dla pewności
             filename: req.file.originalname,
             mimetype: req.file.mimetype,
             size: req.file.size,
@@ -1089,7 +2456,7 @@ app.post(['/api/upload/icon', '/upload/icon'], upload.single('icon'), async (req
         
         res.json({
             success: true,
-            url: result.permanentUrl,
+            url: result.permanentUrl, // STAŁY LINK
             iconId: iconId,
             message: 'Icon uploaded with permanent link (never expires)'
         });
@@ -1099,8 +2466,8 @@ app.post(['/api/upload/icon', '/upload/icon'], upload.single('icon'), async (req
     }
 });
 
-// Upload single screenshot - OBSŁUGA OBU ŚCIEŻEK
-app.post(['/api/upload/screenshot', '/upload/screenshot'], upload.single('screenshot'), async (req, res) => {
+// Upload pojedynczego screenshotu - STAŁY LINK
+app.post('/api/upload/screenshot', upload.single('screenshot'), async (req, res) => {
     try {
         const { gameId } = req.query;
         
@@ -1113,6 +2480,7 @@ app.post(['/api/upload/screenshot', '/upload/screenshot'], upload.single('screen
         const filename = `${screenshotId}${ext}`;
         const dropboxPath = `/screenshots/${filename}`;
         
+        // Użyj NOWEJ funkcji z permanentnym linkiem
         const result = await saveBinaryToDropboxWithPermanentLink(
             dropboxPath, 
             req.file.buffer, 
@@ -1123,20 +2491,21 @@ app.post(['/api/upload/screenshot', '/upload/screenshot'], upload.single('screen
         screenshots.push({
             id: screenshotId,
             dropboxPath: dropboxPath,
-            url: result.permanentUrl,
-            permanentUrl: result.permanentUrl,
+            url: result.permanentUrl, // STAŁY LINK - nigdy nie wygasa!
+            permanentUrl: result.permanentUrl, // dla pewności
             gameId: gameId || null,
             filename: req.file.originalname,
             mimetype: req.file.mimetype,
             size: req.file.size,
-            uploadedAt: new Date().toISOString()
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: req.headers['x-username'] || 'unknown'
         });
         
         await saveGlobalFile('screenshots.json', screenshots);
         
         res.json({
             success: true,
-            url: result.permanentUrl,
+            url: result.permanentUrl, // STAŁY LINK
             screenshotId: screenshotId,
             message: 'Screenshot uploaded with permanent link (never expires)'
         });
@@ -1146,8 +2515,8 @@ app.post(['/api/upload/screenshot', '/upload/screenshot'], upload.single('screen
     }
 });
 
-// Upload multiple screenshots - OBSŁUGA OBU ŚCIEŻEK
-app.post(['/api/upload/screenshots', '/upload/screenshots'], upload.array('screenshots', 10), async (req, res) => {
+// Upload wielu screenshotów - STAŁE LINKI
+app.post('/api/upload/screenshots', upload.array('screenshots', 10), async (req, res) => {
     try {
         const { gameId } = req.query;
         
@@ -1164,6 +2533,7 @@ app.post(['/api/upload/screenshots', '/upload/screenshots'], upload.array('scree
             const filename = `${screenshotId}${ext}`;
             const dropboxPath = `/screenshots/${filename}`;
             
+            // Użyj NOWEJ funkcji z permanentnym linkiem
             const result = await saveBinaryToDropboxWithPermanentLink(
                 dropboxPath, 
                 file.buffer, 
@@ -1173,7 +2543,7 @@ app.post(['/api/upload/screenshots', '/upload/screenshots'], upload.array('scree
             screenshots.push({
                 id: screenshotId,
                 dropboxPath: dropboxPath,
-                url: result.permanentUrl,
+                url: result.permanentUrl, // STAŁY LINK
                 permanentUrl: result.permanentUrl,
                 gameId: gameId || null,
                 filename: file.originalname,
@@ -1183,7 +2553,7 @@ app.post(['/api/upload/screenshots', '/upload/screenshots'], upload.array('scree
             });
             
             uploadedUrls.push({ 
-                url: result.permanentUrl,
+                url: result.permanentUrl, // STAŁY LINK
                 screenshotId 
             });
         }
@@ -1202,19 +2572,49 @@ app.post(['/api/upload/screenshots', '/upload/screenshots'], upload.array('scree
     }
 });
 
-// Get screenshots for game - OBSŁUGA OBU ŚCIEŻEK
-app.get(['/api/screenshots/:gameId', '/screenshots/:gameId'], async (req, res) => {
+// Serwowanie plików - używa stałych linków z bazy
+app.get('/dropbox-file/*', async (req, res) => {
+    try {
+        const dropboxPath = '/' + req.params[0];
+        
+        // Spróbuj najpierw pobrać stały link z bazy
+        const screenshots = await loadGlobalFile('screenshots.json', []);
+        const icons = await loadGlobalFile('icons.json', []);
+        const allFiles = [...screenshots, ...icons];
+        
+        const fileRecord = allFiles.find(f => f.dropboxPath === dropboxPath);
+        
+        if (fileRecord && fileRecord.permanentUrl) {
+            // Mamy stały link - przekieruj
+            return res.redirect(fileRecord.permanentUrl);
+        }
+        
+        // Jeśli nie ma stałego linku (stary plik), utwórz go
+        const permanentLink = await createPermanentDropboxLink(dropboxPath);
+        res.redirect(permanentLink);
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Pobierz screenshoty dla gry - zwraca STAŁE linki (z konwersją starych)
+app.get('/api/screenshots/:gameId', async (req, res) => {
     try {
         const screenshots = await loadGlobalFile('screenshots.json', []);
         const gameScreenshots = screenshots
             .filter(s => s.gameId === req.params.gameId)
             .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
         
+        // Jeśli screenshoty mają już permanentUrl, użyj go
+        // Jeśli nie (stare screenshoty z tymczasowymi linkami), przekonwertuj je
         const refreshedScreenshots = await Promise.all(
             gameScreenshots.map(async (s) => {
                 if (s.permanentUrl) {
+                    // Już ma stały link - użyj go
                     return { ...s, url: s.permanentUrl };
                 } else {
+                    // Stary screenshot z tymczasowym linkiem - utwórz stały
                     try {
                         const permanentUrl = await createPermanentDropboxLink(s.dropboxPath);
                         s.permanentUrl = permanentUrl;
@@ -1228,6 +2628,7 @@ app.get(['/api/screenshots/:gameId', '/screenshots/:gameId'], async (req, res) =
             })
         );
         
+        // Zapisz zaktualizowane linki (konwersja starych na nowe)
         const allScreenshots = await loadGlobalFile('screenshots.json', []);
         const updatedScreenshots = allScreenshots.map(s => {
             const updated = refreshedScreenshots.find(rs => rs.id === s.id);
@@ -1246,111 +2647,12 @@ app.get(['/api/screenshots/:gameId', '/screenshots/:gameId'], async (req, res) =
     }
 });
 
-// Serve files by Dropbox path
-app.get(['/dropbox-file/*', '/api/dropbox-file/*'], async (req, res) => {
-    try {
-        const dropboxPath = '/' + req.params[0];
-        
-        const screenshots = await loadGlobalFile('screenshots.json', []);
-        const icons = await loadGlobalFile('icons.json', []);
-        const allFiles = [...screenshots, ...icons];
-        
-        const fileRecord = allFiles.find(f => f.dropboxPath === dropboxPath);
-        
-        if (fileRecord && fileRecord.permanentUrl) {
-            return res.redirect(fileRecord.permanentUrl);
-        }
-        
-        const permanentLink = await createPermanentDropboxLink(dropboxPath);
-        res.redirect(permanentLink);
-        
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// === BACKUP API ===
-
-app.post(['/api/backup/create', '/backup/create'], async (req, res) => {
-    try {
-        const result = await createFullBackup();
-        res.json({
-            success: true,
-            backup: {
-                timestamp: result.timestamp,
-                folder: result.folder,
-                foldersBackedUp: result.success,
-                failed: result.failed
-            }
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.get(['/api/backup/list', '/backup/list'], async (req, res) => {
-    try {
-        const backups = await listDropboxFolder('/backups');
-        
-        const backupList = [];
-        for (const folder of backups.filter(b => b['.tag'] === 'folder' && b.name.startsWith('backup_'))) {
-            const metadata = await loadFromDropbox(`/backups/${folder.name}/_metadata.json`, null);
-            if (metadata) {
-                backupList.push({
-                    id: folder.name.replace('backup_', ''),
-                    timestamp: metadata.timestamp,
-                    createdAt: metadata.createdAt,
-                    folders: metadata.folders,
-                    status: metadata.failed?.length > 0 ? 'partial' : 'complete'
-                });
-            }
-        }
-        
-        res.json({
-            success: true,
-            backups: backupList.sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
-            total: backupList.length,
-            maxKept: BACKUP_CONFIG.maxBackups
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// === STATIC FILES ===
-
-// Serve static files from current directory
-app.use(express.static(__dirname));
-
-// Serve admin panel at root
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Serve index.html for all HTML requests
-app.get('/index.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Handle admin.html and other pages
-app.get(['/admin.html', '/admin'], (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Handle 404 - zwróć index.html dla ścieżek SPA (Single Page Application)
-app.get('*', (req, res) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/games') || req.path.startsWith('/upload')) {
-        return res.status(404).json({ error: 'Not found' });
-    }
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// === SERVER START ===
+// === START SERWERA ===
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serwer HTTP + WebSocket na porcie ${PORT}`);
     console.log(`☁️ Dropbox Storage: ${DROPBOX_CONFIG.basePath}`);
-    console.log(`🌐 Admin panel: http://localhost:${PORT}`);
+    console.log(`🌐 Adres: http://localhost:${PORT}`);
     
     setInterval(() => {
         try {
@@ -1371,6 +2673,11 @@ server.listen(PORT, '0.0.0.0', () => {
                 console.error('❌ Self-ping failed:', err.message);
             });
             
+            req.on('timeout', () => {
+                req.destroy();
+                console.error('❌ Self-ping timeout');
+            });
+            
             req.end();
             
         } catch (error) {
@@ -1379,7 +2686,7 @@ server.listen(PORT, '0.0.0.0', () => {
     }, PING_INTERVAL);
 });
 
-// Initialization
+// Inicjalizacja
 console.log('📋 Server starting...');
 
 dropboxTokenManager.initialize().then(() => {
@@ -1388,8 +2695,6 @@ dropboxTokenManager.initialize().then(() => {
 }).then(() => {
     console.log('✅ Storage gotowy');
     
-    startAutomaticBackup();
-    
     if (DISCORD_TOKEN) {
         console.log('🔌 Łączenie z Discordem...');
         
@@ -1397,10 +2702,14 @@ dropboxTokenManager.initialize().then(() => {
             console.log(`🤖 Bot: ${discordClient.user.tag}`);
             discordReady = true;
             
+            discordClient.channels.fetch(NOTIFICATION_CHANNEL_ID)
+                .then(ch => console.log(`📨 Kanał powiadomień OK: ${ch.name}`))
+                .catch(err => console.log(`⚠️ Brak dostępu do kanału: ${err.message}`));
+            
             sendDiscordNotification(
                 new EmbedBuilder()
-                    .setTitle('🟢 Server wystartował')
-                    .setDescription(`Port: ${PORT}\nStorage: Dropbox\nAdmin: http://localhost:${PORT}`)
+                    .setTitle('🟢 Serwer wystartował')
+                    .setDescription(`Port: ${PORT}\nStorage: Dropbox\nPath: ${DROPBOX_CONFIG.basePath}`)
                     .setColor(0x00ff00)
                     .setTimestamp()
             ).catch(() => {});
@@ -1420,13 +2729,12 @@ dropboxTokenManager.initialize().then(() => {
     console.error('❌ Błąd inicjalizacji:', err.message);
 });
 
-// Graceful shutdown
+// Obsługa zamykania
 process.on('SIGINT', () => {
     console.log('🛑 SIGINT received - shutting down gracefully');
     isShuttingDown = true;
     
     dropboxTokenManager.stop();
-    stopAutomaticBackup();
     
     if (discordReady) {
         sendDiscordNotification(
