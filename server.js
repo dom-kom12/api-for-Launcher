@@ -276,6 +276,248 @@ async function saveToDropbox(dropboxPath, content) {
     }
 }
 
+// Odczytaj plik z Dropbox (tekstowy/JSON)
+async function loadFromDropbox(dropboxPath, defaultValue = null) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        console.log(`📂 Odczyt z Dropbox: ${fullPath}`);
+        
+        const response = await dropboxApiRequest('/files/download', {
+            method: 'POST',
+            headers: {
+                'Dropbox-API-Arg': JSON.stringify({
+                    path: fullPath
+                })
+            }
+        });
+        
+        if (response.status === 409) {
+            console.log(`📭 Plik nie istnieje w Dropbox: ${dropboxPath}`);
+            return defaultValue;
+        }
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Dropbox download error: ${error}`);
+        }
+        
+        const content = await response.text();
+        console.log(`✅ Odczytano z Dropbox: ${dropboxPath}`);
+        return JSON.parse(content);
+    } catch (error) {
+        if (error.message.includes('not_found') || error.message.includes('path_lookup') || error.message.includes('path/not_found')) {
+            return defaultValue;
+        }
+        console.error(`❌ Błąd odczytu z Dropbox (${dropboxPath}):`, error.message);
+        return defaultValue;
+    }
+}
+
+// Usuń plik z Dropbox
+async function deleteFromDropbox(dropboxPath) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        const response = await dropboxApiRequest('/files/delete_v2', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: fullPath
+            })
+        });
+        
+        if (!response.ok && response.status !== 409) {
+            const error = await response.text();
+            throw new Error(`Dropbox delete error: ${error}`);
+        }
+        
+        console.log(`🗑️ Usunięto z Dropbox: ${dropboxPath}`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Błąd usuwania z Dropbox (${dropboxPath}):`, error.message);
+        return false;
+    }
+}
+
+// Lista plików w folderze Dropbox
+async function listDropboxFolder(dropboxPath) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        const response = await dropboxApiRequest('/files/list_folder', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: fullPath,
+                recursive: false,
+                include_media_info: false,
+                include_deleted: false
+            })
+        });
+        
+        if (!response.ok) {
+            if (response.status === 409) {
+                // Folder nie istnieje - utwórz go
+                await createDropboxFolder(dropboxPath);
+                return [];
+            }
+            const error = await response.text();
+            throw new Error(`Dropbox list error: ${error}`);
+        }
+        
+        const data = await response.json();
+        return data.entries || [];
+    } catch (error) {
+        console.error(`❌ Błąd listowania folderu Dropbox (${dropboxPath}):`, error.message);
+        return [];
+    }
+}
+
+// Utwórz folder w Dropbox
+async function createDropboxFolder(dropboxPath) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        console.log(`📁 Tworzenie folderu w Dropbox: ${fullPath}`);
+        
+        const response = await dropboxApiRequest('/files/create_folder_v2', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: fullPath,
+                autorename: false
+            })
+        });
+        
+        if (!response.ok && response.status !== 409) {
+            const error = await response.text();
+            throw new Error(`Dropbox create folder error: ${error}`);
+        }
+        
+        console.log(`✅ Utworzono folder w Dropbox: ${dropboxPath}`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Błąd tworzenia folderu Dropbox (${dropboxPath}):`, error.message);
+        throw error;
+    }
+}
+
+// Zapisz binarny plik (obraz) do Dropbox
+async function saveBinaryToDropbox(dropboxPath, buffer, mimeType) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        const response = await dropboxApiRequest('/files/upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/octet-stream',
+                'Dropbox-API-Arg': JSON.stringify({
+                    path: fullPath,
+                    mode: 'overwrite',
+                    autorename: false,
+                    mute: false
+                })
+            },
+            body: buffer
+        });
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Dropbox upload error: ${error}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Zapisano binarny plik do Dropbox: ${dropboxPath}`);
+        return result;
+    } catch (error) {
+        console.error(`❌ Błąd zapisu binarnego do Dropbox (${dropboxPath}):`, error.message);
+        throw error;
+    }
+}
+
+// Pobierz URL do pliku w Dropbox
+async function getDropboxTemporaryLink(dropboxPath) {
+    try {
+        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
+        
+        const response = await dropboxApiRequest('/files/get_temporary_link', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: fullPath
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Dropbox link error: ${error}`);
+        }
+        
+        const data = await response.json();
+        return data.link;
+    } catch (error) {
+        console.error(`❌ Błąd pobierania linku Dropbox (${dropboxPath}):`, error.message);
+        return null;
+    }
+}
+
+// Inicjalizacja struktury folderów w Dropbox
+async function initDropboxStructure() {
+    console.log('📁 Inicjalizacja struktury folderów w Dropbox...');
+    
+    const folders = [
+        '/global',
+        '/users',
+        '/chats',
+        '/screenshots',
+        '/icons',
+        '/temp',
+        '/backups'
+    ];
+    
+    for (const folder of folders) {
+        try {
+            await createDropboxFolder(folder);
+        } catch (err) {
+            console.error(`❌ Nie udało się utworzyć folderu ${folder}:`, err.message);
+            // Kontynuuj mimo błędu
+        }
+    }
+    
+    // Inicjalizacja domyślnych plików globalnych
+    const globalFiles = {
+        'users.json': {},
+        'games.json': [],
+        'comments.json': {},
+        'ratings.json': {},
+        'screenshots.json': [],
+        'icons.json': []
+    };
+    
+    for (const [filename, defaultData] of Object.entries(globalFiles)) {
+        try {
+            const existing = await loadFromDropbox(`/global/${filename}`, null);
+            if (existing === null) {
+                await saveToDropbox(`/global/${filename}`, JSON.stringify(defaultData, null, 2));
+                console.log(`  📝 Utworzono w Dropbox: ${filename}`);
+            }
+        } catch (err) {
+            console.error(`❌ Błąd tworzenia pliku ${filename}:`, err.message);
+        }
+    }
+    
+    console.log('✅ Struktura Dropbox gotowa');
+}
+
 // === KONFIGURACJA BACKUPU ===
 const BACKUP_CONFIG = {
     interval: 60 * 60 * 1000, // Co 1 godzinę (w ms)
@@ -672,248 +914,6 @@ app.get('/api/backup/status', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
-// Odczytaj plik z Dropbox (tekstowy/JSON)
-async function loadFromDropbox(dropboxPath, defaultValue = null) {
-    try {
-        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
-        
-        console.log(`📂 Odczyt z Dropbox: ${fullPath}`);
-        
-        const response = await dropboxApiRequest('/files/download', {
-            method: 'POST',
-            headers: {
-                'Dropbox-API-Arg': JSON.stringify({
-                    path: fullPath
-                })
-            }
-        });
-        
-        if (response.status === 409) {
-            console.log(`📭 Plik nie istnieje w Dropbox: ${dropboxPath}`);
-            return defaultValue;
-        }
-        
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Dropbox download error: ${error}`);
-        }
-        
-        const content = await response.text();
-        console.log(`✅ Odczytano z Dropbox: ${dropboxPath}`);
-        return JSON.parse(content);
-    } catch (error) {
-        if (error.message.includes('not_found') || error.message.includes('path_lookup') || error.message.includes('path/not_found')) {
-            return defaultValue;
-        }
-        console.error(`❌ Błąd odczytu z Dropbox (${dropboxPath}):`, error.message);
-        return defaultValue;
-    }
-}
-
-// Usuń plik z Dropbox
-async function deleteFromDropbox(dropboxPath) {
-    try {
-        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
-        
-        const response = await dropboxApiRequest('/files/delete_v2', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                path: fullPath
-            })
-        });
-        
-        if (!response.ok && response.status !== 409) {
-            const error = await response.text();
-            throw new Error(`Dropbox delete error: ${error}`);
-        }
-        
-        console.log(`🗑️ Usunięto z Dropbox: ${dropboxPath}`);
-        return true;
-    } catch (error) {
-        console.error(`❌ Błąd usuwania z Dropbox (${dropboxPath}):`, error.message);
-        return false;
-    }
-}
-
-// Lista plików w folderze Dropbox
-async function listDropboxFolder(dropboxPath) {
-    try {
-        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
-        
-        const response = await dropboxApiRequest('/files/list_folder', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                path: fullPath,
-                recursive: false,
-                include_media_info: false,
-                include_deleted: false
-            })
-        });
-        
-        if (!response.ok) {
-            if (response.status === 409) {
-                // Folder nie istnieje - utwórz go
-                await createDropboxFolder(dropboxPath);
-                return [];
-            }
-            const error = await response.text();
-            throw new Error(`Dropbox list error: ${error}`);
-        }
-        
-        const data = await response.json();
-        return data.entries || [];
-    } catch (error) {
-        console.error(`❌ Błąd listowania folderu Dropbox (${dropboxPath}):`, error.message);
-        return [];
-    }
-}
-
-// Utwórz folder w Dropbox
-async function createDropboxFolder(dropboxPath) {
-    try {
-        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
-        
-        console.log(`📁 Tworzenie folderu w Dropbox: ${fullPath}`);
-        
-        const response = await dropboxApiRequest('/files/create_folder_v2', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                path: fullPath,
-                autorename: false
-            })
-        });
-        
-        if (!response.ok && response.status !== 409) {
-            const error = await response.text();
-            throw new Error(`Dropbox create folder error: ${error}`);
-        }
-        
-        console.log(`✅ Utworzono folder w Dropbox: ${dropboxPath}`);
-        return true;
-    } catch (error) {
-        console.error(`❌ Błąd tworzenia folderu Dropbox (${dropboxPath}):`, error.message);
-        throw error;
-    }
-}
-
-// Zapisz binarny plik (obraz) do Dropbox
-async function saveBinaryToDropbox(dropboxPath, buffer, mimeType) {
-    try {
-        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
-        
-        const response = await dropboxApiRequest('/files/upload', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/octet-stream',
-                'Dropbox-API-Arg': JSON.stringify({
-                    path: fullPath,
-                    mode: 'overwrite',
-                    autorename: false,
-                    mute: false
-                })
-            },
-            body: buffer
-        });
-        
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Dropbox upload error: ${error}`);
-        }
-        
-        const result = await response.json();
-        console.log(`✅ Zapisano binarny plik do Dropbox: ${dropboxPath}`);
-        return result;
-    } catch (error) {
-        console.error(`❌ Błąd zapisu binarnego do Dropbox (${dropboxPath}):`, error.message);
-        throw error;
-    }
-}
-
-// Pobierz URL do pliku w Dropbox
-async function getDropboxTemporaryLink(dropboxPath) {
-    try {
-        const fullPath = `${DROPBOX_CONFIG.basePath}${dropboxPath}`;
-        
-        const response = await dropboxApiRequest('/files/get_temporary_link', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                path: fullPath
-            })
-        });
-        
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Dropbox link error: ${error}`);
-        }
-        
-        const data = await response.json();
-        return data.link;
-    } catch (error) {
-        console.error(`❌ Błąd pobierania linku Dropbox (${dropboxPath}):`, error.message);
-        return null;
-    }
-}
-
-// Inicjalizacja struktury folderów w Dropbox
-async function initDropboxStructure() {
-    console.log('📁 Inicjalizacja struktury folderów w Dropbox...');
-    
-    const folders = [
-        '/global',
-        '/users',
-        '/chats',
-        '/screenshots',
-        '/icons',
-        '/temp',
-        '/backups'
-    ];
-    
-    for (const folder of folders) {
-        try {
-            await createDropboxFolder(folder);
-        } catch (err) {
-            console.error(`❌ Nie udało się utworzyć folderu ${folder}:`, err.message);
-            // Kontynuuj mimo błędu
-        }
-    }
-    
-    // Inicjalizacja domyślnych plików globalnych
-    const globalFiles = {
-        'users.json': {},
-        'games.json': [],
-        'comments.json': {},
-        'ratings.json': {},
-        'screenshots.json': [],
-        'icons.json': []
-    };
-    
-    for (const [filename, defaultData] of Object.entries(globalFiles)) {
-        try {
-            const existing = await loadFromDropbox(`/global/${filename}`, null);
-            if (existing === null) {
-                await saveToDropbox(`/global/${filename}`, JSON.stringify(defaultData, null, 2));
-                console.log(`  📝 Utworzono w Dropbox: ${filename}`);
-            }
-        } catch (err) {
-            console.error(`❌ Błąd tworzenia pliku ${filename}:`, err.message);
-        }
-    }
-    
-    console.log('✅ Struktura Dropbox gotowa');
-}
 
 // Ścieżki lokalne (tylko dla tymczasowych uploadów)
 const PATHS = {
@@ -2695,6 +2695,9 @@ dropboxTokenManager.initialize().then(() => {
 }).then(() => {
     console.log('✅ Storage gotowy');
     
+    // Uruchom automatyczny backup
+    startAutomaticBackup();
+    
     if (DISCORD_TOKEN) {
         console.log('🔌 Łączenie z Discordem...');
         
@@ -2735,6 +2738,7 @@ process.on('SIGINT', () => {
     isShuttingDown = true;
     
     dropboxTokenManager.stop();
+    stopAutomaticBackup();
     
     if (discordReady) {
         sendDiscordNotification(
