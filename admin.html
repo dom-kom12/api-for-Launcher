@@ -698,6 +698,55 @@
             background: #ff336615;
             color: #ff3366;
         }
+
+        .backup-section {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .backup-section h3 {
+            color: #00d4ff;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .backup-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .backup-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #0a0a0f;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .backup-item button {
+            padding: 4px 10px;
+            font-size: 11px;
+        }
+
+        .backup-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #6a6a7a;
+        }
+
+        .backup-status.active {
+            color: #00ff88;
+        }
     </style>
 </head>
 <body>
@@ -714,6 +763,7 @@
                 <span>●</span> Dropbox Online
             </div>
             <button class="btn btn-secondary" onclick="checkCompatibility()">🖥️ Sprawdź PC</button>
+            <button class="btn btn-secondary" onclick="showBackupPanel()">💾 Backup</button>
             <button class="btn btn-primary" onclick="openModal()">➕ Dodaj Grę</button>
         </div>
     </div>
@@ -728,6 +778,18 @@
         <div class="compat-check" id="compatPanel" style="display: none;">
             <h3>🖥️ Twoja Konfiguracja</h3>
             <div id="compatList"></div>
+        </div>
+
+        <div class="backup-section" id="backupPanel" style="display: none;">
+            <h3>💾 Zarządzanie Backupami</h3>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button class="btn btn-success" onclick="createBackup()">➕ Utwórz Backup</button>
+                <button class="btn btn-secondary" onclick="loadBackups()">🔄 Odśwież Listę</button>
+                <span class="backup-status" id="backupStatus"></span>
+            </div>
+            <div class="backup-list" id="backupList">
+                <div style="text-align: center; color: #6a6a7a; padding: 20px;">Kliknij "Odśwież Listę" aby załadować backupy</div>
+            </div>
         </div>
         
         <div class="games-grid" id="gamesGrid">
@@ -926,7 +988,7 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const API_URL = window.location.origin;
+        const API_URL = "https://api-for-launcher.onrender.com";
         
         let games = [];
         let editingId = null;
@@ -1014,7 +1076,7 @@
 
                 const data = await response.json();
                 
-                currentScreenshots.push(data.url);
+                currentScreenshots.push(data.permanentUrl || data.url);
                 renderScreenshots();
                 showToast('Screenshot dodany!', 'success');
 
@@ -1045,8 +1107,8 @@
 
                 const data = await response.json();
                 
-                document.getElementById('inputIconUrl').value = data.url;
-                preview.innerHTML = `<img src="${data.url}" alt="Icon">`;
+                document.getElementById('inputIconUrl').value = data.permanentUrl || data.url;
+                preview.innerHTML = `<img src="${data.permanentUrl || data.url}" alt="Icon">`;
                 showToast('Ikona dodana!', 'success');
 
             } catch (error) {
@@ -1091,7 +1153,7 @@
             try {
                 document.getElementById('gamesCount').innerHTML = '<span class="loading"></span> Ładowanie...';
                 
-                const response = await fetch(`${API_URL}/api/games`, {
+                const response = await fetch(`${API_URL}/games`, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -1124,6 +1186,115 @@
             showToast('Odświeżanie...', 'info');
             loadGames();
             checkDropboxStatus();
+        }
+
+        function showBackupPanel() {
+            const panel = document.getElementById('backupPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            if (panel.style.display === 'block') {
+                loadBackups();
+            }
+        }
+
+        async function loadBackups() {
+            const listEl = document.getElementById('backupList');
+            const statusEl = document.getElementById('backupStatus');
+            
+            listEl.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="loading"></div> Ładowanie...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/backup/list`);
+                if (!response.ok) throw new Error('Błąd pobierania listy');
+                
+                const data = await response.json();
+                const backups = data.backups || [];
+                
+                if (backups.length === 0) {
+                    listEl.innerHTML = '<div style="text-align: center; color: #6a6a7a; padding: 20px;">Brak backupów</div>';
+                    statusEl.textContent = 'Brak backupów';
+                    statusEl.className = 'backup-status';
+                    return;
+                }
+                
+                statusEl.textContent = `${backups.length} backupów`;
+                statusEl.className = 'backup-status active';
+                
+                listEl.innerHTML = backups.map(backup => `
+                    <div class="backup-item">
+                        <div>
+                            <strong>${backup.id}</strong>
+                            <div style="font-size: 11px; color: #6a6a7a;">${new Date(backup.createdAt).toLocaleString('pl-PL')}</div>
+                            <div style="font-size: 11px; color: ${backup.status === 'complete' ? '#00ff88' : '#ffaa00'};">
+                                ${backup.status === 'complete' ? '✓ Kompletny' : '⚠ Częściowy'}
+                            </div>
+                        </div>
+                        <div>
+                            <button class="btn btn-primary btn-icon" onclick="restoreBackup('${backup.id}')">♻️ Przywróć</button>
+                            <button class="btn btn-danger btn-icon" onclick="deleteBackup('${backup.id}')">🗑️</button>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                listEl.innerHTML = `<div style="text-align: center; color: #ff3366; padding: 20px;">Błąd: ${error.message}</div>`;
+                statusEl.textContent = 'Błąd';
+                statusEl.className = 'backup-status';
+            }
+        }
+
+        async function createBackup() {
+            showToast('Tworzenie backupu...', 'info');
+            try {
+                const response = await fetch(`${API_URL}/api/backup/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Błąd tworzenia backupu');
+                
+                const data = await response.json();
+                showToast('Backup utworzony: ' + data.backup.timestamp, 'success');
+                loadBackups();
+            } catch (error) {
+                showToast('Błąd: ' + error.message, 'error');
+            }
+        }
+
+        async function restoreBackup(timestamp) {
+            if (!confirm(`Czy na pewno chcesz przywrócić backup z ${timestamp}?\n\nUWAGA: To nadpisze obecne dane!`)) return;
+            
+            showToast('Przywracanie backupu...', 'info');
+            try {
+                const response = await fetch(`${API_URL}/api/backup/restore/${timestamp}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: 'RESTORE' })
+                });
+                
+                if (!response.ok) throw new Error('Błąd przywracania');
+                
+                showToast('Backup przywrócony! Odśwież stronę.', 'success');
+                setTimeout(() => location.reload(), 2000);
+            } catch (error) {
+                showToast('Błąd: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteBackup(timestamp) {
+            if (!confirm(`Usunąć backup ${timestamp}?`)) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/backup/${timestamp}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) throw new Error('Błąd usuwania');
+                
+                showToast('Backup usunięty', 'success');
+                loadBackups();
+            } catch (error) {
+                showToast('Błąd: ' + error.message, 'error');
+            }
         }
 
         function checkCompatibility() {
