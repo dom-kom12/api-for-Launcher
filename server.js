@@ -520,7 +520,6 @@ async function initDropboxStructure() {
 
 // === KONFIGURACJA BACKUPU ===
 const BACKUP_CONFIG = {
-    interval: 60 * 60 * 1000, // Co 1 godzinę (w ms)
     maxBackups: 24, // Maksymalnie 24 kopie (ostatnie 24h)
     folders: [
         '/global',
@@ -627,7 +626,7 @@ async function createFullBackup() {
         // Powiadomienie Discord
         if (discordReady && backupResults.failed.length === 0) {
             const embed = new EmbedBuilder()
-                .setTitle('💾 Automatyczny Backup')
+                .setTitle('💾 Ręczny Backup')
                 .setDescription(`Backup wykonany pomyślnie`)
                 .addFields(
                     { name: 'ID', value: timestamp, inline: true },
@@ -717,9 +716,6 @@ async function restoreFromBackup(backupTimestamp) {
             const sourcePath = `${backupFolder}${folder}`;
             const destPath = folder; // np. /global
             
-            // Usuń obecny folder (opcjonalnie - można też najpierw zrobić backup obecnego stanu)
-            // await deleteFromDropbox(destPath);
-            
             // Kopiuj z backupu
             await copyDropboxFolder(
                 `${DROPBOX_CONFIG.basePath}${sourcePath}`,
@@ -770,36 +766,6 @@ async function listBackups() {
     } catch (error) {
         console.error('❌ Błąd listowania backupów:', error.message);
         return [];
-    }
-}
-
-// === AUTOMATYCZNY BACKUP (inicjalizacja) ===
-
-let backupInterval = null;
-
-function startAutomaticBackup() {
-    if (backupInterval) {
-        clearInterval(backupInterval);
-    }
-    
-    console.log(`🔄 Automatyczny backup co ${BACKUP_CONFIG.interval/60000} minut`);
-    
-    // Pierwszy backup po 5 minutach od startu
-    setTimeout(() => {
-        createFullBackup().catch(err => console.error('Błąd pierwszego backupu:', err));
-    }, 5 * 60 * 1000);
-    
-    // Potem co godzinę
-    backupInterval = setInterval(() => {
-        createFullBackup().catch(err => console.error('Błąd automatycznego backupu:', err));
-    }, BACKUP_CONFIG.interval);
-}
-
-function stopAutomaticBackup() {
-    if (backupInterval) {
-        clearInterval(backupInterval);
-        backupInterval = null;
-        console.log('🛑 Automatyczny backup zatrzymany');
     }
 }
 
@@ -903,12 +869,10 @@ app.get('/api/backup/status', async (req, res) => {
         
         res.json({
             success: true,
-            automaticBackup: backupInterval !== null,
-            intervalMinutes: BACKUP_CONFIG.interval / 60000,
+            manualBackupOnly: true,
             maxBackupsKept: BACKUP_CONFIG.maxBackups,
             totalBackups: backups.length,
-            latestBackup: latest || null,
-            nextBackup: backupInterval ? new Date(Date.now() + BACKUP_CONFIG.interval).toISOString() : null
+            latestBackup: latest || null
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -2695,9 +2659,6 @@ dropboxTokenManager.initialize().then(() => {
 }).then(() => {
     console.log('✅ Storage gotowy');
     
-    // Uruchom automatyczny backup
-    startAutomaticBackup();
-    
     if (DISCORD_TOKEN) {
         console.log('🔌 Łączenie z Discordem...');
         
@@ -2738,7 +2699,6 @@ process.on('SIGINT', () => {
     isShuttingDown = true;
     
     dropboxTokenManager.stop();
-    stopAutomaticBackup();
     
     if (discordReady) {
         sendDiscordNotification(
