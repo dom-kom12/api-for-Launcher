@@ -925,7 +925,7 @@
                 grid.innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
                         <h3>📂 Brak gier</h3>
-                        <p>${search ? 'Nie znaleziono pasujących gier' : 'Brak dostępnych gier'}</p>
+                        <p>${search ? 'Nie znaleziono pasujących gier' : 'Dodaj pierwszą grę używając przycisku powyżej'}</p>
                     </div>
                 `;
                 return;
@@ -934,72 +934,103 @@
             filtered.forEach(game => {
                 const isFree = game.price === 0;
                 const size = game.size ? `${game.size} GB` : 'N/A';
-                const inLibrary = library.some(l => l.gameId === game.id);
+                const compat = checkGameCompatibility(game);
+                const screenshots = game.screenshots || [];
+                
+                // DEKLARACJA hasValidIcon PRZED UŻYCIEM
+                const hasValidIcon = game.iconUrl || game.icon;
                 
                 let iconHtml;
                 if (game.iconUrl) {
-                    iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 60px;\\'>🎮</span>';">`;
+                    iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 16px;">`;
                 } else {
                     iconHtml = `<span style="font-size: 60px;">${game.icon || '🎮'}</span>`;
                 }
                 
-                // POPRAWKA: Lepsza obsługa screenshotów
-                const screenshots = game.screenshots || [];
+                let reqHtml = '';
+                if (game.requirements && (game.requirements.min || game.requirements.rec)) {
+                    const min = game.requirements.min || {};
+                    const rec = game.requirements.rec || {};
+                    
+                    reqHtml = `
+                        <details class="game-requirements">
+                            <summary>🖥️ Wymagania systemowe</summary>
+                            ${min.os ? `
+                            <div class="req-section">
+                                <h4>Minimalne</h4>
+                                ${min.os ? `<div class="req-item"><span>OS:</span><span>${min.os}</span></div>` : ''}
+                                ${min.cpu ? `<div class="req-item"><span>CPU:</span><span>${min.cpu}</span></div>` : ''}
+                                ${min.ram ? `<div class="req-item"><span>RAM:</span><span>${min.ram}</span></div>` : ''}
+                                ${min.gpu ? `<div class="req-item"><span>GPU:</span><span>${min.gpu}</span></div>` : ''}
+                                ${min.storage ? `<div class="req-item"><span>Dysk:</span><span>${min.storage}</span></div>` : ''}
+                            </div>` : ''}
+                            ${rec.os ? `
+                            <div class="req-section">
+                                <h4>Rekomendowane</h4>
+                                ${rec.os ? `<div class="req-item"><span>OS:</span><span>${rec.os}</span></div>` : ''}
+                                ${rec.cpu ? `<div class="req-item"><span>CPU:</span><span>${rec.cpu}</span></div>` : ''}
+                                ${rec.ram ? `<div class="req-item"><span>RAM:</span><span>${rec.ram}</span></div>` : ''}
+                                ${rec.gpu ? `<div class="req-item"><span>GPU:</span><span>${rec.gpu}</span></div>` : ''}
+                                ${rec.storage ? `<div class="req-item"><span>Dysk:</span><span>${rec.storage}</span></div>` : ''}
+                            </div>` : ''}
+                        </details>
+                    `;
+                }
+
                 let screenshotsHtml = '';
                 if (screenshots.length > 0) {
-                    // Użyj pierwszego screenshotu jako tło headera jeśli brak ikony
-                    const hasValidIcon = game.iconUrl || game.icon;
-                    
                     screenshotsHtml = `
-                        <div class="screenshots-preview" onclick="event.stopPropagation(); openScreenshotViewer('${game.id}', 0)">
-                            ${screenshots.slice(0, 3).map((url, idx) => `
+                        <div class="screenshots-preview">
+                            ${screenshots.slice(0, 3).map(url => `
                                 <div class="screenshot-thumb">
-                                    <img src="${url}" alt="" 
-                                        onerror="this.style.display='none'; this.parentElement.innerHTML='📷'; this.parentElement.style.fontSize='20px'; this.parentElement.style.color='#2a2a3a';"
-                                        onload="this.style.display='block';"
-                                    >
+                                    <img src="${url}" alt="" onerror="this.style.display='none'">
                                 </div>
                             `).join('')}
-                            ${screenshots.length > 3 ? `<div class="screenshot-thumb" style="background: #00d4ff; color: #000; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center;">+${screenshots.length - 3}</div>` : ''}
+                            ${screenshots.length > 3 ? `<div class="screenshot-thumb" style="background: #00d4ff; color: #000; font-size: 12px; font-weight: bold;">+${screenshots.length - 3}</div>` : ''}
                         </div>
                     `;
                 }
 
-                // Sprawdź czy screenshoty się wczytują (debug)
-                if (screenshots.length > 0) {
-                    console.log(`Gra "${game.name}" ma ${screenshots.length} screenshotów:`, screenshots);
+                let compatBadge = '';
+                if (userPC) {
+                    if (compat.compatible) {
+                        compatBadge = '<span class="badge" style="background: #00ff88; color: #000;">✓ Działa</span>';
+                    } else {
+                        compatBadge = `<span class="badge" style="background: #ff3366; color: #fff;" title="${compat.reason}">✖ ${compat.reason}</span>`;
+                    }
                 }
                 
                 const card = document.createElement('div');
                 card.className = 'game-card';
-                card.onclick = () => showGameDetail(game);
-                
-                // Użyj pierwszego screenshotu jako tło jeśli nie ma ikony
-                const headerStyle = (!hasValidIcon && screenshots.length > 0) 
-                    ? `background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('${screenshots[0]}'); background-size: cover; background-position: center;` 
-                    : `background: ${game.color || '#00d4ff'}20;`;
-                
                 card.innerHTML = `
-                    <div class="game-header" style="${headerStyle}">
-                        ${hasValidIcon ? iconHtml : ''}
+                    <div class="game-header" style="background: ${game.color || '#00d4ff'}20;">
+                        ${iconHtml}
                         <span class="game-pegi">PEGI ${game.pegi || 12}</span>
-                        ${game.size ? `<span class="game-size">💾 ${size}</span>` : ''}
+                        <span class="game-size">💾 ${size}</span>
                     </div>
                     <div class="game-body">
-                        <div class="game-title">${game.name}</div>
+                        <div class="game-title">${game.name} ${compatBadge}</div>
                         <div class="game-dev">${game.developer || 'Unknown'} ${game.genre ? `• ${game.genre}` : ''}</div>
                         <div style="margin-bottom: 10px;">
                             ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
-                            ${inLibrary ? '<span class="badge badge-new">W BIBLIOTECE</span>' : ''}
+                            ${screenshots.length > 0 ? `<span class="screenshot-count">📸 ${screenshots.length}</span>` : ''}
                         </div>
                         <div class="game-desc">${game.description || 'Brak opisu'}</div>
                         ${screenshotsHtml}
+                        ${reqHtml}
+                        <div class="game-actions">
+                            <button class="btn btn-primary btn-icon" onclick="editGame('${game.id}')">✏️ Edytuj</button>
+                            ${compat.compatible ? 
+                                `<button class="btn btn-success btn-icon" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
+                                `<button class="btn btn-success btn-icon" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
+                            }
+                            <button class="btn btn-danger btn-icon" onclick="deleteGame('${game.id}')">🗑️</button>
+                        </div>
                     </div>
                 `;
                 grid.appendChild(card);
             });
         }
-
         function openScreenshotViewer(gameId, startIndex) {
             const game = games.find(g => g.id === gameId);
             if (!game || !game.screenshots || game.screenshots.length === 0) return;
