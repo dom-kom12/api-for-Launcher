@@ -52,7 +52,7 @@ const BASE_PATH = '/home/dom-kom/SYS/TEM';
 // === DROPBOX CONFIGURATION ===
 const DROPBOX_CONFIG = {
     refreshToken: 'SIkQyaAHJCwAAAAAAAAAAXx597Tmiqnq7aErtYElYKXO2ICt25KzUM7prLXf-O-D',
-    clientId: 'UX7ZX7J4LHWQKHS',
+    clientId: 'ux7zx7j4lhwqkhs',
     clientSecret: 'q83ujxq006ijh9n',
     tokenUrl: 'https://api.dropbox.com/oauth2/token',
     basePath: '/nebula-game-server'
