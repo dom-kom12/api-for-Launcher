@@ -51,12 +51,12 @@ const BASE_PATH = '/home/dom-kom/SYS/TEM';
 
 // === DROPBOX CONFIGURATION ===
 const DROPBOX_CONFIG = {
-    refreshToken: process.env.DROPBOX_REFRESH_TOKEN || 'ULGONos_830AAAAAAAAAMWeF4BSC15llyyYxqCeT2EE',
-    clientId: process.env.DROPBOX_CLIENT_ID || 'ux7zx7j4lhwqkhs',
-    clientSecret: process.env.DROPBOX_CLIENT_SECRET || 'q83ujxq006ijh9n',
+    refreshToken: 'SIkQyaAHJCwAAAAAAAAAAXx597Tmiqnq7aErtYElYKXO2ICt25KzUM7prLXf-O-D',
+    clientId: 'UX7ZX7J4LHWQKHS',
+    clientSecret: 'q83ujxq006ijh9n',
     tokenUrl: 'https://api.dropbox.com/oauth2/token',
     basePath: '/nebula-game-server'
-};
+};;
 
 // Dropbox Token Manager - POPRAWIONY (bez spamu)
 class DropboxTokenManager {
