@@ -123,6 +123,7 @@
             border-radius: 16px;
             overflow: hidden;
             transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
         }
         
         .game-card:hover {
@@ -668,6 +669,16 @@
         .add-comment button {
             margin-top: 10px;
         }
+
+        .section-title {
+            color: #00d4ff;
+            font-size: 14px;
+            margin: 20px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2a2a3a;
+            padding-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -782,6 +793,7 @@
         let currentGame = null;
         let currentScreenshots = [];
         let currentScreenshotIndex = 0;
+        let userPC = null;
 
         // Check if already logged in
         const token = localStorage.getItem('nebula_token');
@@ -908,6 +920,23 @@
             }
         }
 
+        function checkGameCompatibility(game) {
+            if (!userPC || !game.requirements || !game.requirements.min) {
+                return { compatible: true, reason: 'Brak danych' };
+            }
+
+            const min = game.requirements.min;
+            const ramMatch = min.ram ? parseInt(min.ram) <= userPC.ram : true;
+            const osMatch = min.os ? 
+                userPC.os.includes(min.os.toLowerCase().split(' ')[0]) || 
+                min.os.toLowerCase().includes(userPC.os.split(' ')[0]) : true;
+
+            if (!ramMatch) return { compatible: false, reason: `Za mało RAM (wymagane: ${min.ram})` };
+            if (!osMatch) return { compatible: false, reason: `Niekompatybilny system (wymagany: ${min.os})` };
+            
+            return { compatible: true, reason: 'OK' };
+        }
+
         function renderGames() {
             const grid = document.getElementById('gamesGrid');
             const search = document.getElementById('searchInput').value.toLowerCase();
@@ -980,13 +1009,16 @@
                 let screenshotsHtml = '';
                 if (screenshots.length > 0) {
                     screenshotsHtml = `
-                        <div class="screenshots-preview">
-                            ${screenshots.slice(0, 3).map(url => `
+                        <div class="screenshots-preview" onclick="event.stopPropagation(); openScreenshotViewer('${game.id}', 0)">
+                            ${screenshots.slice(0, 3).map((url, idx) => `
                                 <div class="screenshot-thumb">
-                                    <img src="${url}" alt="" onerror="this.style.display='none'">
+                                    <img src="${url}" alt="" 
+                                        onerror="this.style.display='none'; this.parentElement.innerHTML='📷'; this.parentElement.style.fontSize='20px'; this.parentElement.style.color='#2a2a3a';"
+                                        onload="this.style.display='block';"
+                                    >
                                 </div>
                             `).join('')}
-                            ${screenshots.length > 3 ? `<div class="screenshot-thumb" style="background: #00d4ff; color: #000; font-size: 12px; font-weight: bold;">+${screenshots.length - 3}</div>` : ''}
+                            ${screenshots.length > 3 ? `<div class="screenshot-thumb" style="background: #00d4ff; color: #000; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center;">+${screenshots.length - 3}</div>` : ''}
                         </div>
                     `;
                 }
@@ -1000,13 +1032,20 @@
                     }
                 }
                 
+                // Użyj pierwszego screenshotu jako tło jeśli nie ma ikony
+                const headerStyle = (!hasValidIcon && screenshots.length > 0) 
+                    ? `background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('${screenshots[0]}'); background-size: cover; background-position: center;` 
+                    : `background: ${game.color || '#00d4ff'}20;`;
+                
                 const card = document.createElement('div');
                 card.className = 'game-card';
+                card.onclick = () => showGameDetail(game);
+                
                 card.innerHTML = `
-                    <div class="game-header" style="background: ${game.color || '#00d4ff'}20;">
-                        ${iconHtml}
+                    <div class="game-header" style="${headerStyle}">
+                        ${hasValidIcon ? iconHtml : ''}
                         <span class="game-pegi">PEGI ${game.pegi || 12}</span>
-                        <span class="game-size">💾 ${size}</span>
+                        ${game.size ? `<span class="game-size">💾 ${size}</span>` : ''}
                     </div>
                     <div class="game-body">
                         <div class="game-title">${game.name} ${compatBadge}</div>
@@ -1018,19 +1057,19 @@
                         <div class="game-desc">${game.description || 'Brak opisu'}</div>
                         ${screenshotsHtml}
                         ${reqHtml}
-                        <div class="game-actions">
-                            <button class="btn btn-primary btn-icon" onclick="editGame('${game.id}')">✏️ Edytuj</button>
+                        <div class="game-actions" onclick="event.stopPropagation();">
                             ${compat.compatible ? 
-                                `<button class="btn btn-success btn-icon" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
-                                `<button class="btn btn-success btn-icon" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
+                                `<button class="btn btn-success" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
+                                `<button class="btn btn-success" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
                             }
-                            <button class="btn btn-danger btn-icon" onclick="deleteGame('${game.id}')">🗑️</button>
+                            <button class="btn btn-primary" onclick="showGameDetail(games.find(g => g.id === '${game.id}'))">Szczegóły</button>
                         </div>
                     </div>
                 `;
                 grid.appendChild(card);
             });
         }
+
         function openScreenshotViewer(gameId, startIndex) {
             const game = games.find(g => g.id === gameId);
             if (!game || !game.screenshots || game.screenshots.length === 0) return;
@@ -1073,7 +1112,6 @@
             const isFree = game.price === 0;
             const inLibrary = library.some(l => l.gameId === game.id);
             
-            // POPRAWKA: Lepsza obsługa screenshotów w modalu
             const screenshots = game.screenshots || [];
             let screenshotsSection = '';
             if (screenshots.length > 0) {
@@ -1165,7 +1203,6 @@
             document.getElementById('modalGameTitle').textContent = game.name;
             modal.classList.add('active');
             
-            // Załaduj komentarze
             loadComments(game.id);
         }
 
@@ -1175,7 +1212,6 @@
                 if (!response.ok) return;
                 
                 const data = await response.json();
-                // Można dodać wyświetlanie komentarzy w modalu
             } catch (error) {
                 console.error('Błąd ładowania komentarzy:', error);
             }
@@ -1274,7 +1310,7 @@
                             ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
                         </div>
                         <div class="game-actions">
-                            <button class="btn btn-success" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>
+                            <button class="btn btn-success" onclick="event.stopPropagation(); downloadGame('${game.id}')">⬇️ Pobierz</button>
                             <button class="btn btn-primary" onclick="showGameDetail(games.find(g => g.id === '${game.id}'))">Szczegóły</button>
                         </div>
                     </div>
@@ -1316,6 +1352,12 @@
         document.getElementById('gameModal').addEventListener('click', (e) => {
             if (e.target.id === 'gameModal') closeGameModal();
         });
+
+        // Load saved PC config
+        const savedConfig = localStorage.getItem('userPCConfig');
+        if (savedConfig) {
+            userPC = JSON.parse(savedConfig);
+        }
     </script>
 </body>
 </html>
