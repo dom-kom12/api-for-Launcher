@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nebula Admin - Zarządzanie Grami</title>
+    <title>Nebula Launcher</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -30,22 +30,25 @@
             font-size: 28px;
         }
 
-        .storage-info {
-            color: #6a6a7a;
-            font-size: 14px;
-            margin-top: 5px;
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
 
-        .storage-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            background: #0061fe20;
-            color: #0061fe;
-            padding: 4px 10px;
-            border-radius: 4px;
+        .username {
+            color: #a0a0b0;
+            font-size: 14px;
+        }
+
+        .logout-btn {
+            background: #ff3366;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
             font-size: 12px;
-            margin-left: 10px;
         }
         
         .btn {
@@ -83,26 +86,6 @@
             color: #fff;
         }
         
-        .btn-warning {
-            background: #ffaa00;
-            color: #000;
-        }
-
-        .btn-secondary {
-            background: #2a2a3a;
-            color: #fff;
-            border: 1px solid #3a3a4a;
-        }
-
-        .btn-secondary:hover {
-            background: #3a3a4a;
-        }
-
-        .btn-icon {
-            padding: 8px 12px;
-            font-size: 12px;
-        }
-        
         .container {
             max-width: 1400px;
             margin: 0 auto;
@@ -130,7 +113,7 @@
         
         .games-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
             gap: 20px;
         }
         
@@ -148,7 +131,7 @@
         }
         
         .game-header {
-            height: 120px;
+            height: 150px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -241,13 +224,14 @@
             justify-content: center;
             font-size: 20px;
             color: #2a2a3a;
+            overflow: hidden;
+            border: 1px solid #2a2a3a;
         }
 
         .screenshot-thumb img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            border-radius: 4px;
         }
 
         .screenshot-count {
@@ -258,6 +242,65 @@
             border-radius: 10px;
             margin-left: 5px;
         }
+
+        .screenshot-viewer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 3000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .screenshot-viewer.active {
+            display: flex;
+        }
+
+        .screenshot-viewer img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .screenshot-viewer .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ff3366;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .screenshot-viewer .nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0,212,255,0.8);
+            color: #000;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .screenshot-viewer .nav-btn:hover {
+            background: #00d4ff;
+        }
+
+        .screenshot-viewer .prev-btn { left: 20px; }
+        .screenshot-viewer .next-btn { right: 20px; }
         
         .game-requirements {
             background: #0a0a0f;
@@ -322,6 +365,11 @@
             background: #ffaa00;
             color: #000;
         }
+
+        .badge-new {
+            background: #00d4ff;
+            color: #000;
+        }
         
         .modal-overlay {
             display: none;
@@ -334,7 +382,10 @@
             z-index: 1000;
             justify-content: center;
             align-items: center;
-            overflow-y: auto;
+        }
+        
+        .modal-overlay.active {
+            display: flex;
         }
         
         .modal {
@@ -342,10 +393,9 @@
             border: 1px solid #2a2a3a;
             border-radius: 16px;
             width: 90%;
-            max-width: 900px;
+            max-width: 600px;
             max-height: 90vh;
             overflow-y: auto;
-            margin: 20px 0;
         }
         
         .modal-header {
@@ -354,10 +404,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            position: sticky;
-            top: 0;
-            background: #16161f;
-            z-index: 10;
         }
         
         .modal-header h2 {
@@ -376,64 +422,49 @@
             padding: 25px;
         }
 
-        .section-title {
-            color: #00d4ff;
-            font-size: 14px;
-            margin: 20px 0 10px 0;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .library-section {
+            margin-top: 30px;
+        }
+
+        .library-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
             border-bottom: 1px solid #2a2a3a;
-            padding-bottom: 5px;
         }
-        
-        .form-group {
-            margin-bottom: 15px;
+
+        .library-header h2 {
+            color: #00d4ff;
         }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #a0a0b0;
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+
+        .game-detail-screenshots {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
         }
-        
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 12px 15px;
+
+        .game-detail-screenshot {
+            aspect-ratio: 16/9;
             background: #0a0a0f;
-            border: 1px solid #2a2a3a;
             border-radius: 8px;
-            color: #fff;
-            font-size: 14px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 1px solid #2a2a3a;
+            transition: transform 0.2s;
         }
-        
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
+
+        .game-detail-screenshot:hover {
+            transform: scale(1.05);
             border-color: #00d4ff;
         }
-        
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
 
-        .form-row-3 {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 15px;
-        }
-
-        .form-row-4 {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr;
-            gap: 15px;
+        .game-detail-screenshot img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         
         .empty-state {
@@ -492,495 +523,250 @@
             to { transform: rotate(360deg); }
         }
 
-        .icon-selector {
+        .login-container {
             display: flex;
-            gap: 20px;
-            margin-bottom: 15px;
-        }
-
-        .icon-option {
-            flex: 1;
-            padding: 15px;
-            background: #0a0a0f;
-            border: 2px solid #2a2a3a;
-            border-radius: 12px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.3s;
-        }
-
-        .icon-option:hover {
-            border-color: #00d4ff;
-        }
-
-        .icon-option.active {
-            border-color: #00d4ff;
-            background: #00d4ff10;
-        }
-
-        .icon-preview {
-            width: 80px;
-            height: 80px;
-            margin: 10px auto;
-            background: #16161f;
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
             justify-content: center;
-            font-size: 40px;
-            overflow: hidden;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
         }
 
-        .icon-preview img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .drop-zone {
-            border: 3px dashed #2a2a3a;
-            border-radius: 12px;
+        .login-box {
+            background: #16161f;
+            border: 1px solid #2a2a3a;
+            border-radius: 16px;
             padding: 40px;
-            text-align: center;
-            background: #0a0a0f;
-            transition: all 0.3s;
-            cursor: pointer;
-            margin-bottom: 15px;
+            width: 100%;
+            max-width: 400px;
         }
 
-        .drop-zone:hover, .drop-zone.dragover {
-            border-color: #00d4ff;
-            background: #00d4ff05;
-        }
-
-        .drop-zone-text {
-            color: #6a6a7a;
-            font-size: 16px;
-        }
-
-        .drop-zone-text strong {
+        .login-box h2 {
             color: #00d4ff;
+            text-align: center;
+            margin-bottom: 30px;
         }
 
-        .screenshots-section {
+        .login-box .form-group {
+            margin-bottom: 20px;
+        }
+
+        .login-box label {
+            display: block;
+            margin-bottom: 8px;
+            color: #a0a0b0;
+            font-size: 13px;
+        }
+
+        .login-box input {
+            width: 100%;
+            padding: 12px 15px;
             background: #0a0a0f;
+            border: 1px solid #2a2a3a;
             border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
+            color: #fff;
+            font-size: 14px;
         }
 
-        .screenshots-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
+        .login-box button {
+            width: 100%;
+            padding: 15px;
             margin-top: 10px;
         }
 
-        .screenshot-item {
-            position: relative;
-            width: 120px;
-            height: 67px;
-            background: #16161f;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid #2a2a3a;
-        }
-
-        .screenshot-item img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .screenshot-item .remove-btn {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            background: #ff3366;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 6px;
-            font-size: 10px;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .screenshot-item:hover .remove-btn {
-            opacity: 1;
-        }
-
-        .add-screenshot-btn {
-            width: 120px;
-            height: 67px;
-            background: #16161f;
-            border: 2px dashed #2a2a3a;
-            border-radius: 8px;
+        .login-tabs {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            color: #6a6a7a;
-            font-size: 24px;
-            transition: all 0.2s;
+            gap: 10px;
+            margin-bottom: 20px;
         }
 
-        .add-screenshot-btn:hover {
-            border-color: #00d4ff;
-            color: #00d4ff;
-        }
-
-        .file-input {
-            display: none;
-        }
-
-        .compat-check {
-            background: #1a1a2e;
-            border: 1px solid #2a2a3a;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-
-        .compat-check h3 {
-            color: #00d4ff;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        .compat-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #2a2a3a;
-        }
-
-        .compat-item:last-child {
-            border-bottom: none;
-        }
-
-        .compat-status {
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-
-        .compat-ok {
-            background: #00ff8830;
-            color: #00ff88;
-        }
-
-        .compat-fail {
-            background: #ff336630;
-            color: #ff3366;
-        }
-
-        .dropbox-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: #0061fe15;
-            color: #0061fe;
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-size: 13px;
-            margin-left: 15px;
-        }
-
-        .dropbox-status.online {
-            background: #00ff8815;
-            color: #00ff88;
-        }
-
-        .dropbox-status.offline {
-            background: #ff336615;
-            color: #ff3366;
-        }
-
-        .backup-section {
-            background: #1a1a2e;
-            border: 1px solid #2a2a3a;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-
-        .backup-section h3 {
-            color: #00d4ff;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        .backup-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .backup-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .login-tab {
+            flex: 1;
             padding: 10px;
             background: #0a0a0f;
-            border-radius: 6px;
-            font-size: 13px;
+            border: 1px solid #2a2a3a;
+            color: #6a6a7a;
+            cursor: pointer;
+            border-radius: 8px;
+            text-align: center;
         }
 
-        .backup-item button {
-            padding: 4px 10px;
-            font-size: 11px;
+        .login-tab.active {
+            background: #00d4ff;
+            color: #000;
+            border-color: #00d4ff;
         }
 
-        .backup-status {
-            display: inline-flex;
-            align-items: center;
+        .hidden {
+            display: none !important;
+        }
+
+        .rating {
+            display: flex;
             gap: 5px;
+            margin: 10px 0;
+        }
+
+        .star {
+            color: #ffaa00;
+            font-size: 16px;
+        }
+
+        .star.empty {
+            color: #2a2a3a;
+        }
+
+        .comments-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #2a2a3a;
+        }
+
+        .comment {
+            background: #0a0a0f;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
             font-size: 12px;
+        }
+
+        .comment-author {
+            color: #00d4ff;
+            font-weight: bold;
+        }
+
+        .comment-date {
             color: #6a6a7a;
         }
 
-        .backup-status.active {
-            color: #00ff88;
+        .comment-text {
+            color: #a0a0b0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .add-comment {
+            margin-top: 15px;
+        }
+
+        .add-comment textarea {
+            width: 100%;
+            padding: 12px;
+            background: #0a0a0f;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            color: #fff;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .add-comment button {
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div>
-            <h1>🌌 NEBULA ADMIN</h1>
-            <div class="storage-info" id="storageInfo">
-                <span class="storage-badge">☁️ Dropbox</span>
-                <span id="gamesCount">Ładowanie...</span>
+    <!-- Screenshot Viewer -->
+    <div class="screenshot-viewer" id="screenshotViewer">
+        <button class="close-btn" onclick="closeScreenshotViewer()">✕ Zamknij</button>
+        <button class="nav-btn prev-btn" onclick="prevScreenshot()">‹</button>
+        <img src="" alt="Screenshot" id="viewerImage">
+        <button class="nav-btn next-btn" onclick="nextScreenshot()">›</button>
+    </div>
+
+    <!-- Login Screen -->
+    <div class="login-container" id="loginScreen">
+        <div class="login-box">
+            <h2>🌌 NEBULA LAUNCHER</h2>
+            <div class="login-tabs">
+                <div class="login-tab active" onclick="switchTab('login')">Logowanie</div>
+                <div class="login-tab" onclick="switchTab('register')">Rejestracja</div>
             </div>
-        </div>
-        <div style="display: flex; gap: 10px; align-items: center;">
-            <div class="dropbox-status online" id="dropboxStatus">
-                <span>●</span> Dropbox Online
-            </div>
-            <button class="btn btn-secondary" onclick="checkCompatibility()">🖥️ Sprawdź PC</button>
-            <button class="btn btn-secondary" onclick="showBackupPanel()">💾 Backup</button>
-            <button class="btn btn-primary" onclick="openModal()">➕ Dodaj Grę</button>
+            
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Nazwa użytkownika</label>
+                    <input type="text" id="loginUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Hasło</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Zaloguj się</button>
+            </form>
+
+            <form id="registerForm" class="hidden" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label>Nazwa użytkownika</label>
+                    <input type="text" id="regUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Hasło</label>
+                    <input type="password" id="regPassword" required>
+                </div>
+                <div class="form-group">
+                    <label>Email (opcjonalnie)</label>
+                    <input type="email" id="regEmail">
+                </div>
+                <button type="submit" class="btn btn-success">Zarejestruj się</button>
+            </form>
         </div>
     </div>
-    
-    <div class="container">
-        <div class="toolbar">
-            <input type="text" class="search-box" id="searchInput" placeholder="🔍 Szukaj gry..." onkeyup="filterGames()">
-            <button class="btn btn-secondary" onclick="refreshData()">🔄 Odśwież</button>
-            <button class="btn btn-secondary" onclick="checkDropboxStatus()">☁️ Status Dropbox</button>
-        </div>
 
-        <div class="compat-check" id="compatPanel" style="display: none;">
-            <h3>🖥️ Twoja Konfiguracja</h3>
-            <div id="compatList"></div>
-        </div>
-
-        <div class="backup-section" id="backupPanel" style="display: none;">
-            <h3>💾 Zarządzanie Backupami</h3>
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <button class="btn btn-success" onclick="createBackup()">➕ Utwórz Backup</button>
-                <button class="btn btn-secondary" onclick="loadBackups()">🔄 Odśwież Listę</button>
-                <span class="backup-status" id="backupStatus"></span>
+    <!-- Main App -->
+    <div id="mainApp" class="hidden">
+        <div class="header">
+            <div>
+                <h1>🌌 NEBULA LAUNCHER</h1>
             </div>
-            <div class="backup-list" id="backupList">
-                <div style="text-align: center; color: #6a6a7a; padding: 20px;">Kliknij "Odśwież Listę" aby załadować backupy</div>
+            <div class="user-info">
+                <span class="username" id="usernameDisplay"></span>
+                <button class="btn btn-primary" onclick="showLibrary()">📚 Moja Biblioteka</button>
+                <button class="logout-btn" onclick="logout()">Wyloguj</button>
             </div>
         </div>
         
-        <div class="games-grid" id="gamesGrid">
-            <div class="empty-state" style="grid-column: 1/-1;">
-                <div class="loading"></div>
-                <p>Ładowanie gier...</p>
+        <div class="container">
+            <div class="toolbar">
+                <input type="text" class="search-box" id="searchInput" placeholder="🔍 Szukaj gry..." onkeyup="filterGames()">
+                <button class="btn btn-secondary" onclick="refreshData()">🔄 Odśwież</button>
+            </div>
+
+            <div class="games-grid" id="gamesGrid">
+                <div class="empty-state" style="grid-column: 1/-1;">
+                    <div class="loading"></div>
+                    <p>Ładowanie gier...</p>
+                </div>
+            </div>
+
+            <div class="library-section hidden" id="librarySection">
+                <div class="library-header">
+                    <h2>📚 Moja Biblioteka</h2>
+                    <button class="btn btn-secondary" onclick="hideLibrary()">← Powrót do sklepu</button>
+                </div>
+                <div class="games-grid" id="libraryGrid">
+                    <div class="empty-state">
+                        <p>Ładowanie biblioteki...</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    
-    <div class="modal-overlay" id="modal">
+
+    <!-- Game Detail Modal -->
+    <div class="modal-overlay" id="gameModal">
         <div class="modal">
             <div class="modal-header">
-                <h2 id="modalTitle">Dodaj Nową Grę</h2>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <h2 id="modalGameTitle">Szczegóły gry</h2>
+                <button class="modal-close" onclick="closeGameModal()">&times;</button>
             </div>
-            <div class="modal-body">
-                <form id="gameForm" onsubmit="saveGame(event)">
-                    <input type="hidden" id="gameId">
-                    
-                    <div class="section-title">Podstawowe Informacje</div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Nazwa gry *</label>
-                            <input type="text" id="inputName" placeholder="Minecraft Launcher" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Developer</label>
-                            <input type="text" id="inputDev" placeholder="Mojang">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row-4">
-                        <div class="form-group">
-                            <label>Cena (zł)</label>
-                            <input type="number" id="inputPrice" step="0.01" value="0" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label>PEGI</label>
-                            <select id="inputPegi">
-                                <option value="3">3</option>
-                                <option value="7">7</option>
-                                <option value="12" selected>12</option>
-                                <option value="16">16</option>
-                                <option value="18">18</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Rozmiar (GB)</label>
-                            <input type="number" id="inputSize" step="0.1" min="0" placeholder="np. 15.5">
-                        </div>
-                        <div class="form-group">
-                            <label>Wersja</label>
-                            <input type="text" id="inputVersion" placeholder="1.0">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Gatunek</label>
-                            <input type="text" id="inputGenre" placeholder="Akcja, RPG, Strategia...">
-                        </div>
-                        <div class="form-group">
-                            <label>Data premiery</label>
-                            <input type="date" id="inputReleaseDate">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Wydawca</label>
-                            <input type="text" id="inputPublisher" placeholder="Nazwa wydawcy">
-                        </div>
-                        <div class="form-group">
-                            <label>Język</label>
-                            <input type="text" id="inputLanguage" placeholder="Polski, Angielski...">
-                        </div>
-                    </div>
-
-                    <div class="section-title">🎨 Ikona Gry</div>
-                    
-                    <div class="icon-selector">
-                        <div class="icon-option active" onclick="selectIconType('emoji')" id="emojiOption">
-                            <div class="icon-preview" id="emojiPreview">🎮</div>
-                            <div>Emoji</div>
-                            <input type="text" id="inputIcon" placeholder="🎮" maxlength="2" style="margin-top: 10px; text-align: center;" oninput="updateEmojiPreview(this.value)">
-                        </div>
-                        <div class="icon-option" onclick="selectIconType('image')" id="imageOption">
-                            <div class="icon-preview" id="imagePreview">
-                                <span style="font-size: 30px;">📷</span>
-                            </div>
-                            <div>Obrazek PNG/JPG</div>
-                            <input type="file" id="iconFileInput" class="file-input" accept="image/png,image/jpeg,image/jpg" onchange="uploadIcon(this)">
-                            <button type="button" class="btn btn-secondary" style="margin-top: 10px; width: 100%;" onclick="document.getElementById('iconFileInput').click()">Wybierz plik</button>
-                            <input type="hidden" id="inputIconUrl">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Kolor tła (hex)</label>
-                            <input type="color" id="inputColor" value="#00d4ff">
-                        </div>
-                        <div class="form-group">
-                            <label>URL Pobierania</label>
-                            <input type="url" id="inputUrl" placeholder="https://...">
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Opis</label>
-                        <textarea id="inputDesc" rows="3" placeholder="Krótki opis gry..."></textarea>
-                    </div>
-
-                    <div class="section-title">📸 Screenshoty (Drag & Drop)</div>
-                    
-                    <div class="drop-zone" id="dropZone" onclick="document.getElementById('screenshotFileInput').click()">
-                        <div class="drop-zone-text">
-                            <strong>Przeciągnij obrazki tutaj</strong><br>
-                            lub kliknij aby wybrać pliki<br>
-                            <small style="color: #6a6a7a;">PNG, JPG, GIF (max 10MB)</small>
-                        </div>
-                        <input type="file" id="screenshotFileInput" class="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
-                    </div>
-
-                    <div class="screenshots-section">
-                        <div class="screenshots-list" id="screenshotsList">
-                        </div>
-                    </div>
-
-                    <div class="section-title">Wymagania Minimalne</div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>System OS</label>
-                            <input type="text" id="reqMinOs" placeholder="Windows 10 64-bit">
-                        </div>
-                        <div class="form-group">
-                            <label>Procesor</label>
-                            <input type="text" id="reqMinCpu" placeholder="Intel i3-4170">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row-4">
-                        <div class="form-group">
-                            <label>RAM</label>
-                            <input type="text" id="reqMinRam" placeholder="8 GB">
-                        </div>
-                        <div class="form-group">
-                            <label>Karta graficzna</label>
-                            <input type="text" id="reqMinGpu" placeholder="GTX 1050">
-                        </div>
-                        <div class="form-group" style="grid-column: span 2;">
-                            <label>Dysk</label>
-                            <input type="text" id="reqMinStorage" placeholder="20 GB">
-                        </div>
-                    </div>
-
-                    <div class="section-title">Wymagania Rekomendowane</div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>System OS</label>
-                            <input type="text" id="reqRecOs" placeholder="Windows 11 64-bit">
-                        </div>
-                        <div class="form-group">
-                            <label>Procesor</label>
-                            <input type="text" id="reqRecCpu" placeholder="Intel i5-10400">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row-4">
-                        <div class="form-group">
-                            <label>RAM</label>
-                            <input type="text" id="reqRecRam" placeholder="16 GB">
-                        </div>
-                        <div class="form-group">
-                            <label>Karta graficzna</label>
-                            <input type="text" id="reqRecGpu" placeholder="RTX 3060">
-                        </div>
-                        <div class="form-group" style="grid-column: span 2;">
-                            <label>Dysk</label>
-                            <input type="text" id="reqRecStorage" placeholder="20 GB SSD">
-                        </div>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px; margin-top: 20px;">
-                        💾 Zapisz Grę
-                    </button>
-                </form>
+            <div class="modal-body" id="modalGameBody">
+                <!-- Dynamic content -->
             </div>
         </div>
     </div>
@@ -991,463 +777,134 @@
         const API_URL = "https://api-for-launcher.onrender.com";
         
         let games = [];
-        let editingId = null;
-        let userPC = null;
+        let library = [];
+        let currentUser = null;
+        let currentGame = null;
         let currentScreenshots = [];
-        let currentIconType = 'emoji';
+        let currentScreenshotIndex = 0;
 
-        init();
-
-        async function init() {
-            setupDragAndDrop();
-            await loadGames();
-            await checkDropboxStatus();
+        // Check if already logged in
+        const token = localStorage.getItem('nebula_token');
+        const savedUser = localStorage.getItem('nebula_user');
+        
+        if (token && savedUser) {
+            currentUser = JSON.parse(savedUser);
+            showMainApp();
+            loadGames();
+            loadLibrary();
         }
 
-        function setupDragAndDrop() {
-            const dropZone = document.getElementById('dropZone');
+        function switchTab(tab) {
+            document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
             
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, preventDefaults, false);
-            });
-
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => {
-                    dropZone.classList.add('dragover');
-                }, false);
-            });
-
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => {
-                    dropZone.classList.remove('dragover');
-                }, false);
-            });
-
-            dropZone.addEventListener('drop', handleDrop, false);
-        }
-
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
-        }
-
-        async function handleFiles(files) {
-            const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-            
-            if (imageFiles.length === 0) {
-                showToast('Wybierz pliki obrazów', 'error');
-                return;
-            }
-
-            for (const file of imageFiles) {
-                await uploadScreenshot(file);
+            if (tab === 'login') {
+                document.getElementById('loginForm').classList.remove('hidden');
+                document.getElementById('registerForm').classList.add('hidden');
+            } else {
+                document.getElementById('loginForm').classList.add('hidden');
+                document.getElementById('registerForm').classList.remove('hidden');
             }
         }
 
-        async function uploadScreenshot(file) {
-            const formData = new FormData();
-            formData.append('screenshot', file);
-            
-            const tempId = 'temp_' + Date.now();
-            const container = document.getElementById('screenshotsList');
-            const item = document.createElement('div');
-            item.className = 'screenshot-item';
-            item.id = tempId;
-            item.innerHTML = `
-                <div style="width: 100%; height: 100%; background: #0a0a0f; display: flex; align-items: center; justify-content: center;">
-                    <div class="loading"></div>
-                </div>
-            `;
-            container.appendChild(item);
+        async function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
 
             try {
-                const response = await fetch(`${API_URL}/api/upload/screenshot${editingId ? '?gameId=' + editingId : ''}`, {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
                     method: 'POST',
-                    body: formData
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
                 });
 
-                if (!response.ok) throw new Error('Upload failed');
-
-                const data = await response.json();
-                
-                currentScreenshots.push(data.permanentUrl || data.url);
-                renderScreenshots();
-                showToast('Screenshot dodany!', 'success');
-
-            } catch (error) {
-                console.error('Błąd uploadu:', error);
-                document.getElementById(tempId)?.remove();
-                showToast('Błąd uploadu: ' + error.message, 'error');
-            }
-        }
-
-        async function uploadIcon(input) {
-            if (!input.files || input.files.length === 0) return;
-            
-            const file = input.files[0];
-            const formData = new FormData();
-            formData.append('icon', file);
-
-            const preview = document.getElementById('imagePreview');
-            preview.innerHTML = '<div class="loading"></div>';
-
-            try {
-                const response = await fetch(`${API_URL}/api/upload/icon`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) throw new Error('Upload failed');
-
-                const data = await response.json();
-                
-                document.getElementById('inputIconUrl').value = data.permanentUrl || data.url;
-                preview.innerHTML = `<img src="${data.permanentUrl || data.url}" alt="Icon">`;
-                showToast('Ikona dodana!', 'success');
-
-            } catch (error) {
-                console.error('Błąd uploadu ikony:', error);
-                preview.innerHTML = '<span style="font-size: 30px;">❌</span>';
-                showToast('Błąd uploadu ikony: ' + error.message, 'error');
-            }
-        }
-
-        function selectIconType(type) {
-            currentIconType = type;
-            document.getElementById('emojiOption').classList.toggle('active', type === 'emoji');
-            document.getElementById('imageOption').classList.toggle('active', type === 'image');
-        }
-
-        function updateEmojiPreview(value) {
-            document.getElementById('emojiPreview').textContent = value || '🎮';
-        }
-
-        async function checkDropboxStatus() {
-            try {
-                const response = await fetch(`${API_URL}/health`);
-                const data = await response.json();
-                
-                const statusEl = document.getElementById('dropboxStatus');
-                if (data.dropbox && data.dropbox.connected) {
-                    statusEl.className = 'dropbox-status online';
-                    statusEl.innerHTML = '<span>●</span> Dropbox Online';
-                } else {
-                    statusEl.className = 'dropbox-status offline';
-                    statusEl.innerHTML = '<span>●</span> Dropbox Offline';
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Błąd logowania');
                 }
+
+                const data = await response.json();
+                currentUser = data.user;
+                localStorage.setItem('nebula_token', data.token);
+                localStorage.setItem('nebula_user', JSON.stringify(data.user));
+                
+                showMainApp();
+                loadGames();
+                loadLibrary();
+                showToast('Zalogowano pomyślnie!', 'success');
             } catch (error) {
-                console.error('Błąd sprawdzania statusu:', error);
-                const statusEl = document.getElementById('dropboxStatus');
-                statusEl.className = 'dropbox-status offline';
-                statusEl.innerHTML = '<span>●</span> Błąd połączenia';
+                showToast(error.message, 'error');
             }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            const email = document.getElementById('regEmail').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, email })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Błąd rejestracji');
+                }
+
+                const data = await response.json();
+                showToast('Zarejestrowano! Możesz się zalogować.', 'success');
+                switchTab('login');
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function showMainApp() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('usernameDisplay').textContent = currentUser?.username || '';
+        }
+
+        function logout() {
+            localStorage.removeItem('nebula_token');
+            localStorage.removeItem('nebula_user');
+            currentUser = null;
+            location.reload();
         }
 
         async function loadGames() {
             try {
-                document.getElementById('gamesCount').innerHTML = '<span class="loading"></span> Ładowanie...';
+                const response = await fetch(`${API_URL}/games`);
+                if (!response.ok) throw new Error('Błąd ładowania gier');
                 
-                const response = await fetch(`${API_URL}/games`, {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' }
-                });
-                
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                
-                const data = await response.json();
-                games = Array.isArray(data) ? data : [];
-                
-                document.getElementById('gamesCount').textContent = `${games.length} gier w bazie`;
+                games = await response.json();
                 renderGames();
-                
             } catch (error) {
-                console.error('Błąd ładowania:', error);
-                showToast('Błąd ładowania gier: ' + error.message, 'error');
-                document.getElementById('gamesCount').textContent = 'Błąd ładowania';
-                document.getElementById('gamesGrid').innerHTML = `
-                    <div class="empty-state" style="grid-column: 1/-1;">
-                        <h3>⚠️ Błąd połączenia</h3>
-                        <p>${error.message}</p>
-                        <button class="btn btn-primary" onclick="loadGames()" style="margin-top: 20px;">
-                            🔄 Spróbuj ponownie
-                        </button>
-                    </div>
-                `;
+                console.error('Błąd:', error);
+                showToast('Błąd ładowania gier', 'error');
             }
         }
 
-        function refreshData() {
-            showToast('Odświeżanie...', 'info');
-            loadGames();
-            checkDropboxStatus();
-        }
-
-        function showBackupPanel() {
-            const panel = document.getElementById('backupPanel');
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-            if (panel.style.display === 'block') {
-                loadBackups();
-            }
-        }
-
-        async function loadBackups() {
-            const listEl = document.getElementById('backupList');
-            const statusEl = document.getElementById('backupStatus');
-            
-            listEl.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="loading"></div> Ładowanie...</div>';
+        async function loadLibrary() {
+            if (!currentUser) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/backup/list`);
-                if (!response.ok) throw new Error('Błąd pobierania listy');
-                
-                const data = await response.json();
-                const backups = data.backups || [];
-                
-                if (backups.length === 0) {
-                    listEl.innerHTML = '<div style="text-align: center; color: #6a6a7a; padding: 20px;">Brak backupów</div>';
-                    statusEl.textContent = 'Brak backupów';
-                    statusEl.className = 'backup-status';
-                    return;
-                }
-                
-                statusEl.textContent = `${backups.length} backupów`;
-                statusEl.className = 'backup-status active';
-                
-                listEl.innerHTML = backups.map(backup => `
-                    <div class="backup-item">
-                        <div>
-                            <strong>${backup.id}</strong>
-                            <div style="font-size: 11px; color: #6a6a7a;">${new Date(backup.createdAt).toLocaleString('pl-PL')}</div>
-                            <div style="font-size: 11px; color: ${backup.status === 'complete' ? '#00ff88' : '#ffaa00'};">
-                                ${backup.status === 'complete' ? '✓ Kompletny' : '⚠ Częściowy'}
-                            </div>
-                        </div>
-                        <div>
-                            <button class="btn btn-primary btn-icon" onclick="restoreBackup('${backup.id}')">♻️ Przywróć</button>
-                            <button class="btn btn-danger btn-icon" onclick="deleteBackup('${backup.id}')">🗑️</button>
-                        </div>
-                    </div>
-                `).join('');
-                
-            } catch (error) {
-                listEl.innerHTML = `<div style="text-align: center; color: #ff3366; padding: 20px;">Błąd: ${error.message}</div>`;
-                statusEl.textContent = 'Błąd';
-                statusEl.className = 'backup-status';
-            }
-        }
-
-        async function createBackup() {
-            showToast('Tworzenie backupu...', 'info');
-            try {
-                const response = await fetch(`${API_URL}/api/backup/create`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                if (!response.ok) throw new Error('Błąd tworzenia backupu');
-                
-                const data = await response.json();
-                showToast('Backup utworzony: ' + data.backup.timestamp, 'success');
-                loadBackups();
-            } catch (error) {
-                showToast('Błąd: ' + error.message, 'error');
-            }
-        }
-
-        async function restoreBackup(timestamp) {
-            if (!confirm(`Czy na pewno chcesz przywrócić backup z ${timestamp}?\n\nUWAGA: To nadpisze obecne dane!`)) return;
-            
-            showToast('Przywracanie backupu...', 'info');
-            try {
-                const response = await fetch(`${API_URL}/api/backup/restore/${timestamp}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirm: 'RESTORE' })
-                });
-                
-                if (!response.ok) throw new Error('Błąd przywracania');
-                
-                showToast('Backup przywrócony! Odśwież stronę.', 'success');
-                setTimeout(() => location.reload(), 2000);
-            } catch (error) {
-                showToast('Błąd: ' + error.message, 'error');
-            }
-        }
-
-        async function deleteBackup(timestamp) {
-            if (!confirm(`Usunąć backup ${timestamp}?`)) return;
-            
-            try {
-                const response = await fetch(`${API_URL}/api/backup/${timestamp}`, {
-                    method: 'DELETE'
-                });
-                
-                if (!response.ok) throw new Error('Błąd usuwania');
-                
-                showToast('Backup usunięty', 'success');
-                loadBackups();
-            } catch (error) {
-                showToast('Błąd: ' + error.message, 'error');
-            }
-        }
-
-        function checkCompatibility() {
-            const saved = localStorage.getItem('userPCConfig');
-            if (saved) {
-                userPC = JSON.parse(saved);
-                showCompatPanel();
-                renderGames();
-                return;
-            }
-
-            const os = prompt('Twój system operacyjny:', 'Windows 10');
-            if (!os) return;
-            
-            const ram = prompt('Ilość RAM (GB):', '16');
-            if (!ram) return;
-            
-            const cpu = prompt('Procesor:', 'Intel i5');
-            if (!cpu) return;
-            
-            const gpu = prompt('Karta graficzna:', 'GTX 1060');
-            if (!gpu) return;
-
-            userPC = {
-                os: os.toLowerCase(),
-                ram: parseInt(ram) || 0,
-                cpu: cpu.toLowerCase(),
-                gpu: gpu.toLowerCase(),
-                raw: { os, ram: ram + ' GB', cpu, gpu }
-            };
-
-            localStorage.setItem('userPCConfig', JSON.stringify(userPC));
-            showCompatPanel();
-            renderGames();
-        }
-
-        function showCompatPanel() {
-            if (!userPC) return;
-            
-            document.getElementById('compatPanel').style.display = 'block';
-            document.getElementById('compatList').innerHTML = `
-                <div class="compat-item">
-                    <span>🖥️ System</span>
-                    <span class="compat-status compat-ok">${userPC.raw.os}</span>
-                </div>
-                <div class="compat-item">
-                    <span>🧠 RAM</span>
-                    <span class="compat-status compat-ok">${userPC.raw.ram}</span>
-                </div>
-                <div class="compat-item">
-                    <span>⚡ Procesor</span>
-                    <span class="compat-status compat-ok">${userPC.raw.cpu}</span>
-                </div>
-                <div class="compat-item">
-                    <span>🎮 GPU</span>
-                    <span class="compat-status compat-ok">${userPC.raw.gpu}</span>
-                </div>
-            `;
-        }
-
-        function checkGameCompatibility(game) {
-            if (!userPC || !game.requirements || !game.requirements.min) {
-                return { compatible: true, reason: 'Brak danych' };
-            }
-
-            const min = game.requirements.min;
-            const ramMatch = min.ram ? parseInt(min.ram) <= userPC.ram : true;
-            const osMatch = min.os ? 
-                userPC.os.includes(min.os.toLowerCase().split(' ')[0]) || 
-                min.os.toLowerCase().includes(userPC.os.split(' ')[0]) : true;
-
-            if (!ramMatch) return { compatible: false, reason: `Za mało RAM (wymagane: ${min.ram})` };
-            if (!osMatch) return { compatible: false, reason: `Niekompatybilny system (wymagany: ${min.os})` };
-            
-            return { compatible: true, reason: 'OK' };
-        }
-
-        function removeScreenshot(index) {
-            currentScreenshots.splice(index, 1);
-            renderScreenshots();
-        }
-
-        function renderScreenshots() {
-            const container = document.getElementById('screenshotsList');
-            container.innerHTML = '';
-
-            currentScreenshots.forEach((url, index) => {
-                const item = document.createElement('div');
-                item.className = 'screenshot-item';
-                item.innerHTML = `
-                    <img src="${url}" alt="Screenshot" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%2267%22><text x=%2250%22 y=%2250%22 text-anchor=%22middle%22 fill=%22%23666%22>❌</text></svg>'">
-                    <button type="button" class="remove-btn" onclick="removeScreenshot(${index})">×</button>
-                `;
-                container.appendChild(item);
-            });
-
-            const addBtn = document.createElement('div');
-            addBtn.className = 'add-screenshot-btn';
-            addBtn.innerHTML = '+';
-            addBtn.onclick = () => document.getElementById('screenshotFileInput').click();
-            container.appendChild(addBtn);
-        }
-
-        async function saveGameToServer(gameData) {
-            try {
-                const url = editingId 
-                    ? `${API_URL}/api/games/${editingId}` 
-                    : `${API_URL}/api/games`;
-                
-                const method = editingId ? 'PUT' : 'POST';
-                
-                const response = await fetch(url, {
-                    method: method,
+                const response = await fetch(`${API_URL}/api/users/${currentUser.username}/library`, {
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(gameData)
+                        'Authorization': `Bearer ${localStorage.getItem('nebula_token')}`
+                    }
                 });
                 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
+                if (!response.ok) throw new Error('Błąd ładowania biblioteki');
                 
-                const result = await response.json();
-                
-                showToast(editingId ? 'Zaktualizowano grę!' : 'Dodano nową grę!', 'success');
-                await loadGames();
-                return true;
-                
+                library = await response.json();
             } catch (error) {
-                console.error('Błąd zapisywania:', error);
-                showToast('Błąd: ' + error.message, 'error');
-                return false;
-            }
-        }
-
-        async function deleteGameFromServer(id) {
-            try {
-                const response = await fetch(`${API_URL}/api/games/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Accept': 'application/json' }
-                });
-                
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                
-                showToast('Usunięto grę!', 'success');
-                await loadGames();
-                
-            } catch (error) {
-                console.error('Błąd usuwania:', error);
-                showToast('Błąd usuwania: ' + error.message, 'error');
+                console.error('Błąd biblioteki:', error);
             }
         }
 
@@ -1468,7 +925,7 @@
                 grid.innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
                         <h3>📂 Brak gier</h3>
-                        <p>${search ? 'Nie znaleziono pasujących gier' : 'Dodaj pierwszą grę używając przycisku powyżej'}</p>
+                        <p>${search ? 'Nie znaleziono pasujących gier' : 'Brak dostępnych gier'}</p>
                     </div>
                 `;
                 return;
@@ -1477,67 +934,300 @@
             filtered.forEach(game => {
                 const isFree = game.price === 0;
                 const size = game.size ? `${game.size} GB` : 'N/A';
-                const compat = checkGameCompatibility(game);
-                const screenshots = game.screenshots || [];
+                const inLibrary = library.some(l => l.gameId === game.id);
                 
                 let iconHtml;
                 if (game.iconUrl) {
-                    iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 16px;">`;
+                    iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 60px;\\'>🎮</span>';">`;
                 } else {
                     iconHtml = `<span style="font-size: 60px;">${game.icon || '🎮'}</span>`;
                 }
                 
-                let reqHtml = '';
-                if (game.requirements && (game.requirements.min || game.requirements.rec)) {
-                    const min = game.requirements.min || {};
-                    const rec = game.requirements.rec || {};
-                    
-                    reqHtml = `
-                        <details class="game-requirements">
-                            <summary>🖥️ Wymagania systemowe</summary>
-                            ${min.os ? `
-                            <div class="req-section">
-                                <h4>Minimalne</h4>
-                                ${min.os ? `<div class="req-item"><span>OS:</span><span>${min.os}</span></div>` : ''}
-                                ${min.cpu ? `<div class="req-item"><span>CPU:</span><span>${min.cpu}</span></div>` : ''}
-                                ${min.ram ? `<div class="req-item"><span>RAM:</span><span>${min.ram}</span></div>` : ''}
-                                ${min.gpu ? `<div class="req-item"><span>GPU:</span><span>${min.gpu}</span></div>` : ''}
-                                ${min.storage ? `<div class="req-item"><span>Dysk:</span><span>${min.storage}</span></div>` : ''}
-                            </div>` : ''}
-                            ${rec.os ? `
-                            <div class="req-section">
-                                <h4>Rekomendowane</h4>
-                                ${rec.os ? `<div class="req-item"><span>OS:</span><span>${rec.os}</span></div>` : ''}
-                                ${rec.cpu ? `<div class="req-item"><span>CPU:</span><span>${rec.cpu}</span></div>` : ''}
-                                ${rec.ram ? `<div class="req-item"><span>RAM:</span><span>${rec.ram}</span></div>` : ''}
-                                ${rec.gpu ? `<div class="req-item"><span>GPU:</span><span>${rec.gpu}</span></div>` : ''}
-                                ${rec.storage ? `<div class="req-item"><span>Dysk:</span><span>${rec.storage}</span></div>` : ''}
-                            </div>` : ''}
-                        </details>
-                    `;
-                }
-
+                // POPRAWKA: Lepsza obsługa screenshotów
+                const screenshots = game.screenshots || [];
                 let screenshotsHtml = '';
                 if (screenshots.length > 0) {
+                    // Użyj pierwszego screenshotu jako tło headera jeśli brak ikony
+                    const hasValidIcon = game.iconUrl || game.icon;
+                    
                     screenshotsHtml = `
-                        <div class="screenshots-preview">
-                            ${screenshots.slice(0, 3).map(url => `
+                        <div class="screenshots-preview" onclick="event.stopPropagation(); openScreenshotViewer('${game.id}', 0)">
+                            ${screenshots.slice(0, 3).map((url, idx) => `
                                 <div class="screenshot-thumb">
-                                    <img src="${url}" alt="" onerror="this.style.display='none'">
+                                    <img src="${url}" alt="" 
+                                        onerror="this.style.display='none'; this.parentElement.innerHTML='📷'; this.parentElement.style.fontSize='20px'; this.parentElement.style.color='#2a2a3a';"
+                                        onload="this.style.display='block';"
+                                    >
                                 </div>
                             `).join('')}
-                            ${screenshots.length > 3 ? `<div class="screenshot-thumb" style="background: #00d4ff; color: #000; font-size: 12px; font-weight: bold;">+${screenshots.length - 3}</div>` : ''}
+                            ${screenshots.length > 3 ? `<div class="screenshot-thumb" style="background: #00d4ff; color: #000; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center;">+${screenshots.length - 3}</div>` : ''}
                         </div>
                     `;
                 }
 
-                let compatBadge = '';
-                if (userPC) {
-                    if (compat.compatible) {
-                        compatBadge = '<span class="badge" style="background: #00ff88; color: #000;">✓ Działa</span>';
-                    } else {
-                        compatBadge = `<span class="badge" style="background: #ff3366; color: #fff;" title="${compat.reason}">✖ ${compat.reason}</span>`;
+                // Sprawdź czy screenshoty się wczytują (debug)
+                if (screenshots.length > 0) {
+                    console.log(`Gra "${game.name}" ma ${screenshots.length} screenshotów:`, screenshots);
+                }
+                
+                const card = document.createElement('div');
+                card.className = 'game-card';
+                card.onclick = () => showGameDetail(game);
+                
+                // Użyj pierwszego screenshotu jako tło jeśli nie ma ikony
+                const headerStyle = (!hasValidIcon && screenshots.length > 0) 
+                    ? `background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('${screenshots[0]}'); background-size: cover; background-position: center;` 
+                    : `background: ${game.color || '#00d4ff'}20;`;
+                
+                card.innerHTML = `
+                    <div class="game-header" style="${headerStyle}">
+                        ${hasValidIcon ? iconHtml : ''}
+                        <span class="game-pegi">PEGI ${game.pegi || 12}</span>
+                        ${game.size ? `<span class="game-size">💾 ${size}</span>` : ''}
+                    </div>
+                    <div class="game-body">
+                        <div class="game-title">${game.name}</div>
+                        <div class="game-dev">${game.developer || 'Unknown'} ${game.genre ? `• ${game.genre}` : ''}</div>
+                        <div style="margin-bottom: 10px;">
+                            ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
+                            ${inLibrary ? '<span class="badge badge-new">W BIBLIOTECE</span>' : ''}
+                        </div>
+                        <div class="game-desc">${game.description || 'Brak opisu'}</div>
+                        ${screenshotsHtml}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function openScreenshotViewer(gameId, startIndex) {
+            const game = games.find(g => g.id === gameId);
+            if (!game || !game.screenshots || game.screenshots.length === 0) return;
+            
+            currentGame = game;
+            currentScreenshots = game.screenshots;
+            currentScreenshotIndex = startIndex;
+            
+            updateViewerImage();
+            document.getElementById('screenshotViewer').classList.add('active');
+        }
+
+        function updateViewerImage() {
+            const img = document.getElementById('viewerImage');
+            img.src = currentScreenshots[currentScreenshotIndex];
+        }
+
+        function closeScreenshotViewer() {
+            document.getElementById('screenshotViewer').classList.remove('active');
+            currentScreenshots = [];
+            currentScreenshotIndex = 0;
+        }
+
+        function prevScreenshot() {
+            if (currentScreenshots.length === 0) return;
+            currentScreenshotIndex = (currentScreenshotIndex - 1 + currentScreenshots.length) % currentScreenshots.length;
+            updateViewerImage();
+        }
+
+        function nextScreenshot() {
+            if (currentScreenshots.length === 0) return;
+            currentScreenshotIndex = (currentScreenshotIndex + 1) % currentScreenshots.length;
+            updateViewerImage();
+        }
+
+        function showGameDetail(game) {
+            currentGame = game;
+            const modal = document.getElementById('gameModal');
+            const body = document.getElementById('modalGameBody');
+            const isFree = game.price === 0;
+            const inLibrary = library.some(l => l.gameId === game.id);
+            
+            // POPRAWKA: Lepsza obsługa screenshotów w modalu
+            const screenshots = game.screenshots || [];
+            let screenshotsSection = '';
+            if (screenshots.length > 0) {
+                screenshotsSection = `
+                    <div class="section-title">📸 Screenshoty</div>
+                    <div class="game-detail-screenshots">
+                        ${screenshots.map((url, idx) => `
+                            <div class="game-detail-screenshot" onclick="openScreenshotViewer('${game.id}', ${idx})">
+                                <img src="${url}" alt="Screenshot ${idx + 1}" 
+                                    onerror="this.style.display='none'; this.parentElement.style.background='#0a0a0f'; this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;color:#2a2a3a;\\'>📷</div>';"
+                                    onload="this.style.display='block';"
+                                >
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            let requirementsSection = '';
+            if (game.requirements && (game.requirements.min || game.requirements.rec)) {
+                const min = game.requirements.min || {};
+                const rec = game.requirements.rec || {};
+                
+                requirementsSection = `
+                    <div class="section-title">🖥️ Wymagania systemowe</div>
+                    <div class="game-requirements" style="display: block;">
+                        ${min.os ? `
+                        <div class="req-section">
+                            <h4>Minimalne</h4>
+                            ${min.os ? `<div class="req-item"><span>OS:</span><span>${min.os}</span></div>` : ''}
+                            ${min.cpu ? `<div class="req-item"><span>CPU:</span><span>${min.cpu}</span></div>` : ''}
+                            ${min.ram ? `<div class="req-item"><span>RAM:</span><span>${min.ram}</span></div>` : ''}
+                            ${min.gpu ? `<div class="req-item"><span>GPU:</span><span>${min.gpu}</span></div>` : ''}
+                            ${min.storage ? `<div class="req-item"><span>Dysk:</span><span>${min.storage}</span></div>` : ''}
+                        </div>` : ''}
+                        ${rec.os ? `
+                        <div class="req-section">
+                            <h4>Rekomendowane</h4>
+                            ${rec.os ? `<div class="req-item"><span>OS:</span><span>${rec.os}</span></div>` : ''}
+                            ${rec.cpu ? `<div class="req-item"><span>CPU:</span><span>${rec.cpu}</span></div>` : ''}
+                            ${rec.ram ? `<div class="req-item"><span>RAM:</span><span>${rec.ram}</span></div>` : ''}
+                            ${rec.gpu ? `<div class="req-item"><span>GPU:</span><span>${rec.gpu}</span></div>` : ''}
+                            ${rec.storage ? `<div class="req-item"><span>Dysk:</span><span>${rec.storage}</span></div>` : ''}
+                        </div>` : ''}
+                    </div>
+                `;
+            }
+
+            let iconHtml;
+            if (game.iconUrl) {
+                iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 16px;" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 80px;\\'>🎮</span>';">`;
+            } else {
+                iconHtml = `<span style="font-size: 80px;">${game.icon || '🎮'}</span>`;
+            }
+
+            body.innerHTML = `
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="display: inline-block; padding: 20px; background: ${game.color || '#00d4ff'}20; border-radius: 20px;">
+                        ${iconHtml}
+                    </div>
+                    <h2 style="margin-top: 15px; color: #00d4ff;">${game.name}</h2>
+                    <p style="color: #a0a0b0;">${game.developer || 'Unknown'} ${game.publisher ? `• ${game.publisher}` : ''}</p>
+                </div>
+                
+                <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
+                    <span class="badge" style="background: #2a2a3a; color: #fff;">PEGI ${game.pegi || 12}</span>
+                    ${game.genre ? `<span class="badge" style="background: #2a2a3a; color: #fff;">${game.genre}</span>` : ''}
+                    ${game.version ? `<span class="badge" style="background: #2a2a3a; color: #fff;">v${game.version}</span>` : ''}
+                    ${inLibrary ? '<span class="badge badge-new">W BIBLIOTECE</span>' : ''}
+                </div>
+
+                <div class="game-desc" style="text-align: center; margin-bottom: 20px; font-size: 14px;">
+                    ${game.description || 'Brak opisu'}
+                </div>
+
+                ${screenshotsSection}
+                ${requirementsSection}
+
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    ${inLibrary ? 
+                        `<button class="btn btn-success" style="flex: 1;" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
+                        `<button class="btn btn-primary" style="flex: 1;" onclick="addToLibrary('${game.id}')">➕ Dodaj do biblioteki</button>`
                     }
+                    <button class="btn btn-secondary" onclick="closeGameModal()">Zamknij</button>
+                </div>
+            `;
+            
+            document.getElementById('modalGameTitle').textContent = game.name;
+            modal.classList.add('active');
+            
+            // Załaduj komentarze
+            loadComments(game.id);
+        }
+
+        async function loadComments(gameId) {
+            try {
+                const response = await fetch(`${API_URL}/api/games/${gameId}/comments`);
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                // Można dodać wyświetlanie komentarzy w modalu
+            } catch (error) {
+                console.error('Błąd ładowania komentarzy:', error);
+            }
+        }
+
+        function closeGameModal() {
+            document.getElementById('gameModal').classList.remove('active');
+            currentGame = null;
+        }
+
+        async function addToLibrary(gameId) {
+            if (!currentUser) {
+                showToast('Zaloguj się aby dodać grę do biblioteki', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/users/${currentUser.username}/library`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('nebula_token')}`
+                    },
+                    body: JSON.stringify({ gameId })
+                });
+
+                if (!response.ok) throw new Error('Błąd dodawania do biblioteki');
+
+                showToast('Dodano do biblioteki!', 'success');
+                await loadLibrary();
+                closeGameModal();
+                renderGames();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function downloadGame(gameId) {
+            const game = games.find(g => g.id === gameId);
+            if (!game || !game.download_url) {
+                showToast('Brak linku do pobrania', 'error');
+                return;
+            }
+            window.open(game.download_url, '_blank');
+        }
+
+        function showLibrary() {
+            document.getElementById('librarySection').classList.remove('hidden');
+            document.getElementById('gamesGrid').parentElement.classList.add('hidden');
+            renderLibrary();
+        }
+
+        function hideLibrary() {
+            document.getElementById('librarySection').classList.add('hidden');
+            document.getElementById('gamesGrid').parentElement.classList.remove('hidden');
+        }
+
+        function renderLibrary() {
+            const grid = document.getElementById('libraryGrid');
+            
+            if (library.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <h3>📚 Pusta biblioteka</h3>
+                        <p>Dodaj gry ze sklepu do swojej biblioteki</p>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = '';
+            
+            library.forEach(item => {
+                const game = games.find(g => g.id === item.gameId);
+                if (!game) return;
+
+                const isFree = game.price === 0;
+                
+                let iconHtml;
+                if (game.iconUrl) {
+                    iconHtml = `<img src="${game.iconUrl}" alt="${game.name}" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 60px;\\'>🎮</span>';">`;
+                } else {
+                    iconHtml = `<span style="font-size: 60px;">${game.icon || '🎮'}</span>`;
                 }
                 
                 const card = document.createElement('div');
@@ -1545,26 +1235,16 @@
                 card.innerHTML = `
                     <div class="game-header" style="background: ${game.color || '#00d4ff'}20;">
                         ${iconHtml}
-                        <span class="game-pegi">PEGI ${game.pegi || 12}</span>
-                        <span class="game-size">💾 ${size}</span>
                     </div>
                     <div class="game-body">
-                        <div class="game-title">${game.name} ${compatBadge}</div>
-                        <div class="game-dev">${game.developer || 'Unknown'} ${game.genre ? `• ${game.genre}` : ''}</div>
+                        <div class="game-title">${game.name}</div>
+                        <div class="game-dev">${game.developer || 'Unknown'}</div>
                         <div style="margin-bottom: 10px;">
                             ${isFree ? '<span class="badge badge-free">DARMOWE</span>' : `<span class="badge badge-paid">${game.price} zł</span>`}
-                            ${screenshots.length > 0 ? `<span class="screenshot-count">📸 ${screenshots.length}</span>` : ''}
                         </div>
-                        <div class="game-desc">${game.description || 'Brak opisu'}</div>
-                        ${screenshotsHtml}
-                        ${reqHtml}
                         <div class="game-actions">
-                            <button class="btn btn-primary btn-icon" onclick="editGame('${game.id}')">✏️ Edytuj</button>
-                            ${compat.compatible ? 
-                                `<button class="btn btn-success btn-icon" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>` :
-                                `<button class="btn btn-success btn-icon" disabled title="${compat.reason}">⛔ Brak wsparcia</button>`
-                            }
-                            <button class="btn btn-danger btn-icon" onclick="deleteGame('${game.id}')">🗑️</button>
+                            <button class="btn btn-success" onclick="downloadGame('${game.id}')">⬇️ Pobierz</button>
+                            <button class="btn btn-primary" onclick="showGameDetail(games.find(g => g.id === '${game.id}'))">Szczegóły</button>
                         </div>
                     </div>
                 `;
@@ -1572,146 +1252,14 @@
             });
         }
 
-        function downloadGame(gameId) {
-            const game = games.find(g => g.id === gameId);
-            if (!game || !game.download_url) {
-                showToast('Brak linku do pobrania!', 'error');
-                return;
-            }
-            window.open(game.download_url, '_blank');
-        }
-
         function filterGames() {
             renderGames();
         }
 
-        function openModal(id = null) {
-            editingId = id;
-            currentScreenshots = [];
-            currentIconType = 'emoji';
-            selectIconType('emoji');
-            
-            document.getElementById('modal').style.display = 'flex';
-            document.getElementById('modalTitle').textContent = id ? 'Edytuj Grę' : 'Dodaj Nową Grę';
-            
-            document.getElementById('emojiPreview').textContent = '🎮';
-            document.getElementById('imagePreview').innerHTML = '<span style="font-size: 30px;">📷</span>';
-            document.getElementById('inputIconUrl').value = '';
-            
-            if (id) {
-                const game = games.find(g => g.id === id);
-                if (game) {
-                    document.getElementById('inputName').value = game.name || '';
-                    document.getElementById('inputDev').value = game.developer || '';
-                    document.getElementById('inputPrice').value = game.price || 0;
-                    document.getElementById('inputPegi').value = game.pegi || 12;
-                    document.getElementById('inputColor').value = game.color || '#00d4ff';
-                    document.getElementById('inputUrl').value = game.download_url || '';
-                    document.getElementById('inputDesc').value = game.description || '';
-                    document.getElementById('inputSize').value = game.size || '';
-                    document.getElementById('inputVersion').value = game.version || '';
-                    document.getElementById('inputGenre').value = game.genre || '';
-                    document.getElementById('inputReleaseDate').value = game.releaseDate || '';
-                    document.getElementById('inputPublisher').value = game.publisher || '';
-                    document.getElementById('inputLanguage').value = game.language || '';
-                    
-                    if (game.iconUrl) {
-                        selectIconType('image');
-                        document.getElementById('inputIconUrl').value = game.iconUrl;
-                        document.getElementById('imagePreview').innerHTML = `<img src="${game.iconUrl}" alt="Icon">`;
-                    } else {
-                        document.getElementById('inputIcon').value = game.icon || '';
-                        document.getElementById('emojiPreview').textContent = game.icon || '🎮';
-                    }
-                    
-                    if (game.screenshots) {
-                        currentScreenshots = [...game.screenshots];
-                    }
-                    renderScreenshots();
-                    
-                    if (game.requirements) {
-                        const min = game.requirements.min || {};
-                        const rec = game.requirements.rec || {};
-                        
-                        document.getElementById('reqMinOs').value = min.os || '';
-                        document.getElementById('reqMinCpu').value = min.cpu || '';
-                        document.getElementById('reqMinRam').value = min.ram || '';
-                        document.getElementById('reqMinGpu').value = min.gpu || '';
-                        document.getElementById('reqMinStorage').value = min.storage || '';
-                        
-                        document.getElementById('reqRecOs').value = rec.os || '';
-                        document.getElementById('reqRecCpu').value = rec.cpu || '';
-                        document.getElementById('reqRecRam').value = rec.ram || '';
-                        document.getElementById('reqRecGpu').value = rec.gpu || '';
-                        document.getElementById('reqRecStorage').value = rec.storage || '';
-                    }
-                }
-            } else {
-                document.getElementById('gameForm').reset();
-                document.getElementById('inputColor').value = '#00d4ff';
-                document.getElementById('emojiPreview').textContent = '🎮';
-                renderScreenshots();
-            }
-        }
-
-        function closeModal() {
-            document.getElementById('modal').style.display = 'none';
-            editingId = null;
-            currentScreenshots = [];
-        }
-
-        async function saveGame(e) {
-            e.preventDefault();
-            
-            const gameData = {
-                name: document.getElementById('inputName').value,
-                developer: document.getElementById('inputDev').value,
-                price: parseFloat(document.getElementById('inputPrice').value) || 0,
-                pegi: parseInt(document.getElementById('inputPegi').value) || 12,
-                icon: currentIconType === 'emoji' ? (document.getElementById('inputIcon').value || '🎮') : null,
-                iconUrl: currentIconType === 'image' ? document.getElementById('inputIconUrl').value : null,
-                color: document.getElementById('inputColor').value,
-                download_url: document.getElementById('inputUrl').value || null,
-                description: document.getElementById('inputDesc').value,
-                size: parseFloat(document.getElementById('inputSize').value) || null,
-                version: document.getElementById('inputVersion').value || '1.0',
-                genre: document.getElementById('inputGenre').value || 'Nieznany',
-                releaseDate: document.getElementById('inputReleaseDate').value || new Date().toISOString().split('T')[0],
-                publisher: document.getElementById('inputPublisher').value || '',
-                language: document.getElementById('inputLanguage').value || 'Polski/Angielski',
-                screenshots: currentScreenshots,
-                requirements: {
-                    min: {
-                        os: document.getElementById('reqMinOs').value,
-                        cpu: document.getElementById('reqMinCpu').value,
-                        ram: document.getElementById('reqMinRam').value,
-                        gpu: document.getElementById('reqMinGpu').value,
-                        storage: document.getElementById('reqMinStorage').value
-                    },
-                    rec: {
-                        os: document.getElementById('reqRecOs').value,
-                        cpu: document.getElementById('reqRecCpu').value,
-                        ram: document.getElementById('reqRecRam').value,
-                        gpu: document.getElementById('reqRecGpu').value,
-                        storage: document.getElementById('reqRecStorage').value
-                    }
-                }
-            };
-            
-            const success = await saveGameToServer(gameData);
-            if (success) {
-                closeModal();
-            }
-        }
-
-        function editGame(id) {
-            openModal(id);
-        }
-
-        async function deleteGame(id) {
-            const game = games.find(g => g.id === id);
-            if (!confirm(`Czy na pewno chcesz usunąć "${game?.name || id}"?`)) return;
-            await deleteGameFromServer(id);
+        function refreshData() {
+            showToast('Odświeżanie...', 'info');
+            loadGames();
+            if (currentUser) loadLibrary();
         }
 
         function showToast(message, type = 'success') {
@@ -1724,15 +1272,19 @@
             }, 3000);
         }
 
-        document.getElementById('modal').addEventListener('click', (e) => {
-            if (e.target.id === 'modal') closeModal();
+        // Keyboard navigation for screenshot viewer
+        document.addEventListener('keydown', (e) => {
+            if (!document.getElementById('screenshotViewer').classList.contains('active')) return;
+            
+            if (e.key === 'Escape') closeScreenshotViewer();
+            if (e.key === 'ArrowLeft') prevScreenshot();
+            if (e.key === 'ArrowRight') nextScreenshot();
         });
 
-        const savedConfig = localStorage.getItem('userPCConfig');
-        if (savedConfig) {
-            userPC = JSON.parse(savedConfig);
-            showCompatPanel();
-        }
+        // Close modals on outside click
+        document.getElementById('gameModal').addEventListener('click', (e) => {
+            if (e.target.id === 'gameModal') closeGameModal();
+        });
     </script>
 </body>
 </html>
