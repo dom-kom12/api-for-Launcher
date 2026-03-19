@@ -51,7 +51,7 @@ const BASE_PATH = '/home/dom-kom/SYS/TEM';
 
 // === DROPBOX CONFIGURATION ===
 const DROPBOX_CONFIG = {
-    refreshToken: process.env.DROPBOX_REFRESH_TOKEN || '47v0EqFCtcoAAAAAAAAAAfpTfXOTlKIav64b9Qy-sYuu3DstFy6jU72bwoMIjdj2',
+    refreshToken: process.env.DROPBOX_REFRESH_TOKEN || 'ULGONos_830AAAAAAAAAMWeF4BSC15llyyYxqCeT2EE',
     clientId: process.env.DROPBOX_CLIENT_ID || 'ux7zx7j4lhwqkhs',
     clientSecret: process.env.DROPBOX_CLIENT_SECRET || 'q83ujxq006ijh9n',
     tokenUrl: 'https://api.dropbox.com/oauth2/token',
